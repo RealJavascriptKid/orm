@@ -2,21 +2,176 @@
 
  module.exports = class ProgressORM{
 
-    constructor(databaseName,options){
-        this.dbName = databaseName;
+    constructor(opts){
+        return this.#init(opts)
+    }
+
+    async #init({ dbName,
+                  dbo, //needed for schema gathering
+                  schemaOwner,
+                  schemaPath,
+                  dateFormat,
+                  dateTimeFormat,
+                  timeFormat,
+                  overrideSchemaStrict,
+                  schemaOptions
+                }){
+        if(!dbo || typeof dbo !== 'object')
+            throw `"dbo" must be provided. It is needed to get schema`
+
+        if(!dbName)
+            throw `"dbName" must be provided`
+
+
+        this.schemaOwner = schemaOwner || 'PUB'    
+        this.dbName = dbName;
         this.type = 'progress';
-        this.options = options || {};
+        this.schemaOptions = schemaOptions || {
+            plantid:0
+        };
         this.moment = require('moment')            
-        this.dateFormat = 'YYYY-MM-DD'; //used alongside moment
-        this.dateTimeFormat = 'YYYY-MM-DD HH:mm:ss';
-        this.timeFormat = 'HHmm';
+        this.dateFormat = dateFormat || 'YYYY-MM-DD'; //used alongside moment
+        this.dateTimeFormat = dateTimeFormat || 'YYYY-MM-DD HH:mm:ss';
+        this.timeFormat = timeFormat || 'HHmm';
+        this.#overrideSchemaStrict = overrideSchemaStrict || false; //if true then after schema is overriden then it will remove additional fields 
+        this.#schemas = {}
+        this.#schemaPath =  schemaPath || `./schemas/progress/${this.dbName.toLowerCase()}/`
+        if(!this.#schemaPath.endsWith('/'))
+            this.#schemaPath += '/';
+            
+        this.#sequenceMap = require(`./schemas/progress/${this.dbName.toLowerCase()}/tableSequenceMap.json`); //used by getSchema utomatically figure out ID fields
+
+        await this.#populateSchema(dbo);
+    }
+
+    
+
+    async #populateSchema(dbo){
+        let allFields = await dbo.sql(`SELECT fd."_field-name" AS 'field', fd."_data-type" AS 'dbType', 
+                                    fd."_Extent" AS 'ArrayExtent'
+                                    ,(case  fd."_data-type"
+                                        when 'bit' then 'boolean'
+                                        when 'varchar' then 'string'
+                                        when 'char' then 'string'
+                                        when 'nvarchar' then 'string'
+                                        when 'date' then 'date'
+                                        when 'datetime' then 'datetime'
+                                        when 'datetimeoffset' then 'datetime'
+                                        when 'int' then 'integer'
+                                        when 'bigint' then 'integer'
+                                        when 'numeric' then 'decimal'
+                                        when 'character' then 'string'
+                                        when 'clob' then 'string'
+                                        when 'integer' then 'integer'
+                                        when 'int64' then 'integer'
+                                        when 'decimal' then 'decimal'
+                                        when 'logical' then 'boolean'
+                                        else '} deliberately breaking'
+                                    END) as 'type'
+                                    ,f."_file-name" as 'table'                   
+                                    FROM ${this.schemaOwner}."_field" fd 
+                                    INNER JOIN ${this.schemaOwner}."_file" f ON fd."_file-recid" = f.ROWID 
+                                    WHERE f."_Hidden" = 0 
+                                    order by  f."_file-name"
+                                    with (nolock)`)
+        for(let item of allFields){
+            let table = this.#schemas[item.table];
+
+            if(!table)
+                table = this.#schemas[item.table] = {};
+
+            if(item.ArrayExtent > 0) //we are NOT handling array type fields
+                continue;
+
+            let seqName = this.#getSequenceNameForID(item.table,item)
+            if(seqName){    
+                item.preventUpdate = true;
+                item.preventInsert = true;
+                item.insertSequence = seqName
+            }
+
+            delete item.table;
+
+            switch(item.field){
+                case 'CreateDateTime': 
+                    item = { field: 'CreateDateTime', type: 'datetime', defaultValueOnInsert: 'SYSTIMESTAMP', preventUpdate: true, preventSelection: true }
+                    break;
+
+                case 'ModifyDateTime': case 'ChangeDT':  
+                    item = { field: 'ModifyDateTime',type: 'datetime', defaultValueOnInsert: 'SYSTIMESTAMP', defaultValueOnUpdate: 'SYSTIMESTAMP', preventSelection: true }
+                    break;                            
+
+                case 'PlantId':
+                    item = { field: 'PlantId',type: 'integer', defaultValueOnInsert: this.schemaOptions.plantid }
+                    break; 
+                         
+            }         
+
+            table[item.field] = item;
+
+        }
+
+        await this.#applySchemaOverrides();
+
+    } 
+
+    async #applySchemaOverrides(){
+
+        for(let tableName in this.#schemas){
+             let table = this.#schemas[tableName]
+
+              try{
+
+                let override = require(`${this.#schemaPath}${table}`)(this.schemaOptions) //only require based on 
+                let fieldsToDel = [];
+                for(let fieldName in override){
+                    if(!table[fieldName]){
+                        fieldsToDel.push(fieldName);
+                        continue;
+                    }
+                    table[fieldName] = override[fieldName];
+                }
+
+                for(let fieldName of fieldsToDel)
+                    delete override[fieldName];
+
+                if(this.#overrideSchemaStrict){
+
+                    fieldsToDel = [];    
+
+                    for(let fieldName in table){
+                    
+                        if(!override[fieldName])
+                            fieldsToDel.push(fieldName);
+    
+                    }
+    
+                    for(let fieldName of fieldsToDel)
+                        delete table[fieldName];
+
+                }
+               
+
+              }catch(ex){}
+
+        }
+
     }
     
-    getSchema(schema,opts){
-        if(!opts)
-            opts = this.options;
-        let result = require(`./schemas/progress/${this.dbName.toLowerCase()}/${schema}`)(opts) //only require based on 
-        return result  
+    #getSequenceNameForID(tableName,item){
+        let seqName = '';
+        if(this.#sequenceMap[tableName]) {
+            seqName = this.#sequenceMap[tableName][item.field] || '';
+        }
+        return seqName;
+    }
+   
+
+    async getSchema(schema){
+        if(!this.schemas[schema])
+            throw `Unable to find schema for ${schema}`
+
+        return JSON.parse(JSON.stringify(this.schemas[schema])) //we always should return the copy of schema so that it won't get mutated
     }
 
     getDateTimeFromDateAndTime(dt,t){
@@ -76,14 +231,14 @@
         return str;
     }
 
-    _readWithSchema(fieldValue,obj,fieldModel,mode = 'insert',putQuotes = true){
+    #readWithSchema(fieldValue,obj,fieldModel,mode = 'insert',putQuotes = true){
         const moment = this.moment;
         //Do advance validation here if needed
         //for instance {value:"2.3",type:"decimal"} then we will return parseFloat(fieldModel.value)
         //example 2 {value}
 
         if(mode == 'insert' && fieldModel.insertSequence && (fieldValue == null || fieldModel.preventInsert)){
-            return `(Select pub."${fieldModel.insertSequence}".NextVal As '${fieldModel.insertSequence}' From SysProgress.Syscalctable)`;
+            return `(Select ${this.schemaOwner}."${fieldModel.insertSequence}".NextVal As '${fieldModel.insertSequence}' From SysProgress.Syscalctable)`;
         } 
 
         if(fieldModel.preventUpdate && mode == 'update')                
@@ -127,7 +282,7 @@
         }
 
         if(fieldModel.type == 'any'){
-            fieldModel = this._determineFieldModel(fieldValue);
+            fieldModel = this.#determineFieldModel(fieldValue);
         }
 
        
@@ -214,7 +369,7 @@
         
     }
 
-    _determineFieldModel(val){     
+    #determineFieldModel(val){     
         const moment = this.moment;
         let fieldModel = {type:'string',alternatives:[]}
 
@@ -326,7 +481,7 @@
         return obj;
     }
 
-    copy(params){
+    #copy(params){
         let moment = this.moment;
         let obj = {}; //let obj = JSON.parse(JSON.stringify(params))//copying
 
@@ -347,7 +502,7 @@
         return obj;
     }
 
-    _checkRequiredStatus(prop,val,fieldModel,requiredFails,mode = 'insert'){
+    #checkRequiredStatus(prop,val,fieldModel,requiredFails,mode = 'insert'){
 
         if(mode == 'insert' && fieldModel.requiredOnInsert && !fieldModel.preventInsert){
 
@@ -367,7 +522,7 @@
     //use it for complex insert statments For rudementary inserts with less fields I would prefer
     //old school way but it still works
     generateInsertQueryDataHelper(params,schema){ 
-        let obj = this.copy(params);
+        let obj = this.#copy(params);
         let fields = [],values = []; 
         let val = '',fieldModel,requiredFails = [];
 
@@ -378,9 +533,9 @@
             if(typeof fieldModel === 'string')
                 fieldModel = {type:fieldModel}
 
-            val = this._readWithSchema(val,obj,fieldModel,'insert')
+            val = this.#readWithSchema(val,obj,fieldModel,'insert')
 
-            this._checkRequiredStatus(prop,val,fieldModel,requiredFails,'insert')
+            this.#checkRequiredStatus(prop,val,fieldModel,requiredFails,'insert')
 
             if(val == null){
                 delete obj[prop]; //null will be discarded
@@ -407,9 +562,9 @@
                 if(typeof fieldModel === 'string')
                     fieldModel = {type:fieldModel}
 
-                val = this._readWithSchema(val,nvpFields,fieldModel,'insert',false)
+                val = this.#readWithSchema(val,nvpFields,fieldModel,'insert',false)
 
-                this._checkRequiredStatus(prop,val,fieldModel,requiredFails,'insert')
+                this.#checkRequiredStatus(prop,val,fieldModel,requiredFails,'insert')
 
                 if(val == null){
                     delete nvpFields[prop]; //null will be discarded
@@ -459,7 +614,7 @@
                     continue;
                 }   
                 val = obj[prop];
-                fieldModel = this._determineFieldModel(val)
+                fieldModel = this.#determineFieldModel(val)
                 processField(prop);
             }
 
@@ -479,7 +634,7 @@
     }
 
     generateUpdateQueryDataHelper(params,schema){ 
-        let obj = this.copy(params);
+        let obj = this.#copy(params);
         let updateSqlStr = '';
         let val = '',fieldModel,requiredFails = [];
 
@@ -490,9 +645,9 @@
             if(typeof fieldModel === 'string')
                 fieldModel = {type:fieldModel}    
 
-            val = this._readWithSchema(val,obj,fieldModel,'update')
+            val = this.#readWithSchema(val,obj,fieldModel,'update')
 
-            this._checkRequiredStatus(prop,val,fieldModel,requiredFails,'update')
+            this.#checkRequiredStatus(prop,val,fieldModel,requiredFails,'update')
 
             if(val == null){
                delete obj[prop]; //null will be discarded
@@ -520,9 +675,9 @@
                 if(typeof fieldModel === 'string')
                     fieldModel = {type:fieldModel}
 
-                val = this._readWithSchema(val,nvpFields,fieldModel,'update',false)
+                val = this.#readWithSchema(val,nvpFields,fieldModel,'update',false)
 
-                this._checkRequiredStatus(prop,val,fieldModel,requiredFails,'update')
+                this.#checkRequiredStatus(prop,val,fieldModel,requiredFails,'update')
 
                 if(val == null){
                     delete nvpFields[prop]; //null will be discarded
@@ -574,7 +729,7 @@
             for (let prop in obj){
               
                 val = obj[prop];
-                fieldModel = this._determineFieldModel(val)
+                fieldModel = this.#determineFieldModel(val)
                 processField(prop);
             }
 
@@ -636,10 +791,10 @@
             if(typeof inputSchema === 'string')
                 inputSchema = this.getSchema(inputSchema)
 
-            let schema = this.copy(inputSchema);
+            let schema = this.#copy(inputSchema);
 
 
-            let obj = this.copy(params);
+            let obj = this.#copy(params);
 
             let whereSqlStr = '';
             let val = '',fieldModel;
@@ -651,7 +806,7 @@
                 if(typeof fieldModel === 'string')
                     fieldModel = {type:fieldModel}    
 
-                val = this._readWithSchema(val,obj,fieldModel,'whereclause')
+                val = this.#readWithSchema(val,obj,fieldModel,'whereclause')
 
                 if(val == null){
                     delete obj[prop]; //null will be discarded
@@ -679,7 +834,7 @@
                     if(typeof fieldModel === 'string')
                         fieldModel = {type:fieldModel}
     
-                    val = this._readWithSchema(val,nvpFields,fieldModel,'update',false)    
+                    val = this.#readWithSchema(val,nvpFields,fieldModel,'update',false)    
                        
                     if(val == null){
                         delete nvpFields[prop]; //null will be discarded
@@ -746,7 +901,7 @@
                 for (let prop in obj){
                 
                     val = obj[prop];
-                    fieldModel = this._determineFieldModel(val)
+                    fieldModel = this.#determineFieldModel(val)
                     processField(prop);
                 }
 
@@ -757,6 +912,119 @@
         
             return whereSqlStr;
     }
+
+    async getNextSeq  (dbo,seqName) {
+
+        let data = await dbo.sql(`select ${this.schemaOwner}."${seqName}".nextVal as "${seqName}" from Sysprogress.Syscalctable`)  
+        if(data.length){
+            return data[0][seqName];
+        }else{
+            throw "Invalid Sequence"
+        }  
+    }
+
+    async readOne(dbo, tableName, query,schema)  {
+
+        if(!schema)
+            schema = await this.getSchema(tableName) 
+      
+        let where = this.generateSimpleWhereClause(query,schema);
+
+        if(!where.startsWith('WHERE '))
+            throw {code:'PROVIDE_FILTER_CRITERIA',message: `Please provide valid filter criteria`}
+
+        let result = await dbo.sql(`SELECT top 1 ${orm.makeSQLSelector(schema)} 
+                   FROM ${this.schemaOwner}."${tableName}" 
+                   ${where}
+                   with (nolock)
+                   `)
+        result = (result.length)?result[0]:null;
+
+        if(result && result.NameValuePairs)
+            result = this.normalizeNVPFields(result,schema) //it reads from NameValuePairs field and converts it into object
+
+        return result;
+    }
+
+    async read(dbo, tableName, query,schema)  {
+
+        
+        if(!schema)
+            schema = await this.getSchema(tableName) 
+          
+        let where = this.generateSimpleWhereClause(query,schema);
+    
+        if(!where.startsWith('WHERE '))
+           throw {code:'PROVIDE_FILTER_CRITERIA',message: `Please provide valid filter criteria`}
+    
+         let results = await dbo.sql(`SELECT ${orm.makeSQLSelector(schema)} 
+                    FROM ${this.schemaOwner}."${tableName}" 
+                    ${where}
+                    with (nolock)
+                    `)
+        if(results.length && results[0].NameValuePairs){  //unfortunately we have to do this for Progress ONLY so that we can get these namevaluepairs fields addressed
+            results.map(result => {
+                result = this.normalizeNVPFields(result,schema)
+                return result;
+            })   
+        }
+
+         return results;           
+    
+    }        
+    
+    async insert(dbo, tableName, params,schema){
+
+        if(!schema)
+            schema = await this.getSchema(tableName)     
+    
+       let data = this.generateInsertQueryDataHelper(params, schema)
+    
+       return dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${data.fields})  VALUES(${data.values})`);
+    
+    
+    }
+    
+    async update(dbo, tableName, params, query,schema) {
+
+                    if(!schema)
+                schema = await this.getSchema(tableName)  
+    
+           let where = this.generateSimpleWhereClause(query,schema);
+    
+           if(!where.startsWith('WHERE '))
+               throw {code:'PROVIDE_FILTER_CRITERIA',message: `Please provide valid filter criteria`}
+    
+           //archiving previous     
+           //await dbo.sql(`INSERT INTO dbo."${tableName}_History" select * from dbo."${tableName}_History" ${where} `)
+    
+    
+           let updateSqlStr = this.generateUpdateQueryDataHelper(params, schema)
+    
+    
+           return dbo.sql(`UPDATE ${this.schemaOwner}."${tableName}" 
+               SET                 
+               ${updateSqlStr}
+               ${where} 
+               `)       
+    
+    }        
+    
+    async remove (dbo, tableName, query,schema){
+
+        if(!schema)
+            schema = await this.getSchema(tableName) 
+    
+       let where = this.generateSimpleWhereClause(query,schema);
+    
+       if(!where.startsWith('WHERE '))
+           throw `Cannot delete without filter criteria`
+    
+     
+       return dbo.sql(`DELETE FROM ${this.schemaOwner}."${tableName}" ${where}`)       
+    
+    }
+
 
 }    
 

@@ -174,10 +174,10 @@
    
 
     async getSchema(schema){
-        if(!this.schemas[schema])
+        if(!this.#schemas[schema])
             throw `Unable to find schema for ${schema}`
 
-        return JSON.parse(JSON.stringify(this.schemas[schema])) //we always should return the copy of schema so that it won't get mutated
+        return JSON.parse(JSON.stringify(this.#schemas[schema])) //we always should return the copy of schema so that it won't get mutated
     }
 
     getDateTimeFromDateAndTime(dt,t){

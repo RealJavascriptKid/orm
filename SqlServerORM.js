@@ -146,7 +146,7 @@ module.exports = class SqlServerORM {
     }
        
 
-    async getSchema(schema){
+    getSchema(schema){
         if(!this.#schemas[schema])
             throw `Unable to find schema for ${schema}`
 

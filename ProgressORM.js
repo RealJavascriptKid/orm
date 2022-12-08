@@ -2,6 +2,11 @@
 
  module.exports = class ProgressORM{
 
+    #schemas;
+    #schemaPath;
+    #sequenceMap;
+    #overrideSchemaStrict;
+
     constructor(opts){
         return this.#init(opts)
     }

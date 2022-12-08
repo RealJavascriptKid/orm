@@ -1,6 +1,10 @@
 
 module.exports = class SqlServerORM {
 
+    #schemas;
+    #schemaPath;
+    #sequenceMap;
+    #overrideSchemaStrict;
 
     constructor(opts){
         return this.#init(opts)

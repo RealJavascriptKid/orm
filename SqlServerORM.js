@@ -46,6 +46,7 @@ module.exports = class SqlServerORM {
         //this.#sequenceMap = require(`./schemas/sqlserver/${this.dbName.toLowerCase()}/tableSequenceMap.json`); //used by getTableSchema to automatically figure out ID fields
 
         await this.#populateSchema(dbo);
+        return this;
     }
 
 

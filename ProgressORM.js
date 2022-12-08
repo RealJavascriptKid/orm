@@ -47,6 +47,7 @@
         this.#sequenceMap = require(`./schemas/progress/${this.dbName.toLowerCase()}/tableSequenceMap.json`); //used by getSchema utomatically figure out ID fields
 
         await this.#populateSchema(dbo);
+        return this;
     }
 
     

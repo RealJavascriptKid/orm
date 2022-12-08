@@ -1,0 +1,23 @@
+{
+    "BatchLog":{"LogSequence":"BatchLog"},
+    "CommHdr":{"CommSeqID":"CommSeqID"},
+    "DataExportList":{"TransSeq":"ExportSeq"},
+    "EventLog":{"LogSequence": "EventLogSequence"},
+    "GoalsHeader":{"GoalID": "GoalID"},
+    "IGPSPallet":{"TransNum": "iGPSTransNum"},
+    "InterfaceLog":{"LogSequence":"InterfaceLog"},
+    "InterfaceTransactionSets":{"TransactionSetID":"TransactionSetID"},
+    "MaintUPD":{"ChangeSequence":"MaintSequence"},
+    "Messages":{"MessageID":"MessageID"},
+    "OrderHeader":{"OrdRefNum":"OrderRefNum"},
+    "PalletGroup":{"PalletGroupID":"PalletGroupID"},
+    "ProcessLog":{"TransID":"ProclogSeq"},
+    "QMessage":{"MsgTransNum":"QMsgSeq"},
+    "run-file":{"TranId":"TransId"},
+    "ScaleMsg":{"ProdSequence":"ProcessSeq"},
+    "SerialLog":{"TransNum":"TransNum"},
+    "SnapshotHeader":{"SnapshotID":"SnapshotID"},
+    "SubstituteLog":{"SequenceID":"SubSequence"},
+    "Tub":{"TubSequence":"Tub"},
+    "Work_Order":{"WO_Number":"WONum"}
+}

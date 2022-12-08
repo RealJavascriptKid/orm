@@ -1,0 +1,30 @@
+module.exports = options => {
+    
+    return {
+        PlantId:{type:'integer',defaultValueOnInsert:options.plantid,preventUpdate:true},
+        TransNum:{type:'integer',insertSequence:'TransNum'},
+        SerialNum:'string',
+        Operator:'string',
+        FromLocCode:'string',
+        ToLocCode:'string',
+        MoveDate:{type:'date',defaultValueOnInsert: 'SYSTIMESTAMP'}, 
+        MoveTime:{type:'time',defaultValueOnInsert: 'SYSTIMESTAMP',format:'HHmm'}, 
+        MoveDateTime:{type:'datetime',defaultValueOnInsert: 'SYSTIMESTAMP'}, 
+        ProdCode:'string',
+        OtherValue:'string',
+        OtherType:'string',
+        ProcessName:'string',
+        NetWgt:'decimal',
+        KillDate:'date',
+        PdnDate:'date',
+        SellByDate:'date',
+        PalletNum:'string',
+        OrdRefNum:{type:'integer',defaultValueOnInsert:0},
+        OrdRefLine:{type:'integer',defaultValueOnInsert:0},
+        CreateDateTime: { type: 'datetime', defaultValueOnInsert: 'SYSTIMESTAMP', preventUpdate: true, preventSelection: true },
+        ModifyDateTime: { type: 'datetime', defaultValueOnInsert: 'SYSTIMESTAMP',  preventSelection: true },
+        //RecordSeq:{type:'integer',insertSequence:'SerialLog-seq'},
+        Shift:'string',
+        // UOM:'string',
+    }
+}

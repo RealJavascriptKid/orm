@@ -131,6 +131,10 @@
                 let override = require(`${this.#schemaPath}${tableName}`)(this.schemaOptions) //only require based on 
                 let fieldsToDel = [];
                 for(let fieldName in override){
+
+                    if(fieldName == '_nvp')
+                        continue;
+
                     if(!table[fieldName]){
                         fieldsToDel.push(fieldName);
                         continue;
@@ -155,6 +159,10 @@
                     for(let fieldName of fieldsToDel)
                         delete table[fieldName];
 
+                }
+                
+                if(override._nvp){
+                    table._nvp = override._nvp; //nvp schema
                 }
                
 

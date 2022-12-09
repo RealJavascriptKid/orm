@@ -109,7 +109,7 @@ module.exports = class SqlServerORM {
 
               try{
 
-                let override = require(`${this.#schemaPath}${table}`)(this.schemaOptions) //only require based on 
+                let override = require(`${this.#schemaPath}${tableName}`)(this.schemaOptions) //only require based on 
                 let fieldsToDel = [];
                 for(let fieldName in override){
                     if(!table[fieldName]){

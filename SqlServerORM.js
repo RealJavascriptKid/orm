@@ -85,11 +85,11 @@ module.exports = class SqlServerORM {
 
            switch(item.field){
                case 'CreateDateTime': 
-                   item = { field: 'CreateDateTime', type: 'datetime', defaultValueOnInsert: 'CURRENT_TIMESTAMP', preventUpdate: true, preventSelection: true }
+                   item = { field: item.field, type: 'datetime', defaultValueOnInsert: 'CURRENT_TIMESTAMP', preventUpdate: true, preventSelection: true }
                    break;
 
                case 'ModifyDateTime': case 'ChangeDT': 
-                   item = { field: 'ModifyDateTime',type: 'datetime', defaultValueOnInsert: 'CURRENT_TIMESTAMP', defaultValueOnUpdate: 'CURRENT_TIMESTAMP', preventSelection: true }
+                   item = { field: item.field,type: 'datetime', defaultValueOnInsert: 'CURRENT_TIMESTAMP', defaultValueOnUpdate: 'CURRENT_TIMESTAMP', preventSelection: true }
                    break;
                  
            }

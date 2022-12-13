@@ -100,15 +100,15 @@
 
             switch(item.field){
                 case 'CreateDateTime': 
-                    item = { field: 'CreateDateTime', type: 'datetime', defaultValueOnInsert: 'SYSTIMESTAMP', preventUpdate: true, preventSelection: true }
+                    item = { field: item.field, type: 'datetime', defaultValueOnInsert: 'SYSTIMESTAMP', preventUpdate: true, preventSelection: true }
                     break;
 
                 case 'ModifyDateTime': case 'ChangeDT':  
-                    item = { field: 'ModifyDateTime',type: 'datetime', defaultValueOnInsert: 'SYSTIMESTAMP', defaultValueOnUpdate: 'SYSTIMESTAMP', preventSelection: true }
+                    item = { field: item.field,type: 'datetime', defaultValueOnInsert: 'SYSTIMESTAMP', defaultValueOnUpdate: 'SYSTIMESTAMP', preventSelection: true }
                     break;                            
 
                 case 'PlantId':
-                    item = { field: 'PlantId',type: 'integer', defaultValueOnInsert: this.schemaOptions.plantid }
+                    item = { field: item.field,type: 'integer', defaultValueOnInsert: this.schemaOptions.plantid }
                     break; 
                          
             }         

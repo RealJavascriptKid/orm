@@ -1,16 +1,17 @@
 
 module.exports = class SqlServerORM {
 
-    #schemas;
-    #schemaPath;
-    #sequenceMap;
-    #overrideSchemaStrict;
+   
 
     constructor(opts){
-        return this.#init(opts)
+        this._schemas = null;
+        this._schemaPath = null;
+        this._sequenceMap = null;
+        this._overrideSchemaStrict = null;
+        return this._init(opts)
     }
 
-    async #init({ dbName,
+    async _init({ dbName,
                   dbo, //needed for schema gathering
                   schemaOwner,
                   schemaPath,
@@ -37,20 +38,20 @@ module.exports = class SqlServerORM {
         this.dateFormat = dateFormat || 'YYYY-MM-DD'; //used alongside moment
         this.dateTimeFormat = dateTimeFormat || 'YYYY-MM-DD HH:mm:ss';
         this.timeFormat = timeFormat || 'HH:mm:ss';
-        this.#overrideSchemaStrict = overrideSchemaStrict || false; //if true then after schema is overriden then it will remove additional fields
-        this.#schemas = {}
-        this.#schemaPath =  schemaPath || `./schemas/sqlserver/${this.dbName.toLowerCase()}/`
-        if(!this.#schemaPath.endsWith('/'))
-            this.#schemaPath += '/';
+        this._overrideSchemaStrict = overrideSchemaStrict || false; //if true then after schema is overriden then it will remove additional fields
+        this._schemas = {}
+        this._schemaPath =  schemaPath || `./schemas/sqlserver/${this.dbName.toLowerCase()}/`
+        if(!this._schemaPath.endsWith('/'))
+            this._schemaPath += '/';
             
-        //this.#sequenceMap = require(`./schemas/sqlserver/${this.dbName.toLowerCase()}/tableSequenceMap.json`); //used by getTableSchema to automatically figure out ID fields
+        //this._sequenceMap = require(`./schemas/sqlserver/${this.dbName.toLowerCase()}/tableSequenceMap.json`); //used by getTableSchema to automatically figure out ID fields
 
-        await this.#populateSchema(dbo);
+        await this._populateSchema(dbo);
         return this;
     }
 
 
-    async #populateSchema(dbo){
+    async _populateSchema(dbo){
         let allFields = await dbo.sql(`select c.COLUMN_NAME as 'field',c.DATA_TYPE as 'dbType', (
                                     case  c.DATA_TYPE 
                                         when 'bit' then 'boolean'
@@ -70,10 +71,10 @@ module.exports = class SqlServerORM {
                                     FROM INFORMATION_SCHEMA.COLUMNS c 
                                     order by TABLE_NAME`)
         for(let item of allFields){
-            let table = this.#schemas[item.table];
+            let table = this._schemas[item.table];
 
             if(!table)
-                table = this.#schemas[item.table] = {};
+                table = this._schemas[item.table] = {};
 
             if(['TimeFrame','RecordSeq'].includes(item.field))
                 continue;
@@ -98,18 +99,18 @@ module.exports = class SqlServerORM {
 
         }
 
-        await this.#applySchemaOverrides();
+        await this._applySchemaOverrides();
 
     } 
 
-    async #applySchemaOverrides(){
+    async _applySchemaOverrides(){
 
-        for(let tableName in this.#schemas){
-             let table = this.#schemas[tableName]
+        for(let tableName in this._schemas){
+             let table = this._schemas[tableName]
 
               try{
 
-                let override = require(`${this.#schemaPath}${tableName}`)(this.schemaOptions) //only require based on 
+                let override = require(`${this._schemaPath}${tableName}`)(this.schemaOptions) //only require based on 
                 let fieldsToDel = [];
                 for(let fieldName in override){
                     if(!table[fieldName]){
@@ -122,7 +123,7 @@ module.exports = class SqlServerORM {
                 for(let fieldName of fieldsToDel)
                     delete override[fieldName];
 
-                if(this.#overrideSchemaStrict){
+                if(this._overrideSchemaStrict){
 
                     fieldsToDel = [];    
 
@@ -147,10 +148,10 @@ module.exports = class SqlServerORM {
        
 
     getSchema(schema){
-        if(!this.#schemas[schema])
+        if(!this._schemas[schema])
             throw `Unable to find schema for ${schema}`
 
-        return JSON.parse(JSON.stringify(this.#schemas[schema])) //we always should return the copy of schema so that it won't get mutated
+        return JSON.parse(JSON.stringify(this._schemas[schema])) //we always should return the copy of schema so that it won't get mutated
     }
 
     getDateTimeFromDateAndTime(dt,t){
@@ -210,7 +211,7 @@ module.exports = class SqlServerORM {
         return str;
     }
 
-    #readWithSchema(fieldValue,obj,fieldModel,mode = 'insert'){
+    _readWithSchema(fieldValue,obj,fieldModel,mode = 'insert'){
         const moment = this.moment;
         //Do advance validation here if needed
         //for instance {value:"2.3",type:"decimal"} then we will return parseFloat(fieldModel.value)
@@ -263,7 +264,7 @@ module.exports = class SqlServerORM {
         }
 
         if(fieldModel.type == 'any'){
-            fieldModel = this.#determineFieldModel(fieldValue);
+            fieldModel = this._determineFieldModel(fieldValue);
         }
 
        
@@ -356,7 +357,7 @@ module.exports = class SqlServerORM {
         
     }
 
-    #determineFieldModel(val){     
+    _determineFieldModel(val){     
         const moment = this.moment;
         let fieldModel = {type:'string',alternatives:[]}
 
@@ -384,7 +385,7 @@ module.exports = class SqlServerORM {
         return fieldModel;
     }
 
-    #copy(params){
+    _copy(params){
         let moment = this.moment;
         let obj = {}; //let obj = JSON.parse(JSON.stringify(params))//copying
 
@@ -405,7 +406,7 @@ module.exports = class SqlServerORM {
         return obj;
     }
 
-    #checkRequiredStatus(prop,val,fieldModel,requiredFails,mode = 'insert'){
+    _checkRequiredStatus(prop,val,fieldModel,requiredFails,mode = 'insert'){
 
         if(mode == 'insert' && fieldModel.requiredOnInsert && !fieldModel.preventInsert){
 
@@ -425,7 +426,7 @@ module.exports = class SqlServerORM {
     //use it for complex insert statments For rudementary inserts with less fields I would prefer
     //old school way but it still works
     generateInsertQueryDataHelper(params,schema){ 
-        let obj = this.#copy(params);
+        let obj = this._copy(params);
         let fields = [],values = []; 
         let val = '',fieldModel,requiredFails = [];
 
@@ -434,9 +435,9 @@ module.exports = class SqlServerORM {
             if(typeof fieldModel === 'string')
                 fieldModel = {type:fieldModel}
 
-            val = this.#readWithSchema(val,obj,fieldModel)
+            val = this._readWithSchema(val,obj,fieldModel)
 
-            this.#checkRequiredStatus(prop,val,fieldModel,requiredFails,'insert')
+            this._checkRequiredStatus(prop,val,fieldModel,requiredFails,'insert')
 
             if(val == null){
                delete obj[prop]; //null will be discarded
@@ -473,7 +474,7 @@ module.exports = class SqlServerORM {
             for (let prop in obj){
               
                 val = obj[prop];
-                fieldModel = this.#determineFieldModel(val)
+                fieldModel = this._determineFieldModel(val)
                 processField(prop);
             }
 
@@ -493,7 +494,7 @@ module.exports = class SqlServerORM {
     }    
 
     generateUpdateQueryDataHelper(params,schema){ 
-        let obj = this.#copy(params);
+        let obj = this._copy(params);
         let updateSqlStr = '';
         let val = '',fieldModel,requiredFails = [];
 
@@ -502,9 +503,9 @@ module.exports = class SqlServerORM {
             if(typeof fieldModel === 'string')
                 fieldModel = {type:fieldModel}
 
-            val = this.#readWithSchema(val,obj,fieldModel,'update')
+            val = this._readWithSchema(val,obj,fieldModel,'update')
 
-            this.#checkRequiredStatus(prop,val,fieldModel,requiredFails,'update')
+            this._checkRequiredStatus(prop,val,fieldModel,requiredFails,'update')
 
             if(val == null){
                delete obj[prop]; //null will be discarded
@@ -543,7 +544,7 @@ module.exports = class SqlServerORM {
             for (let prop in obj){
               
                 val = obj[prop];
-                fieldModel = this.#determineFieldModel(val)
+                fieldModel = this._determineFieldModel(val)
                 processField(prop);
             }
 
@@ -597,7 +598,7 @@ module.exports = class SqlServerORM {
             if(typeof schema === 'string')
                 schema = this.getSchema(schema)
         
-            let obj = this.#copy(params);
+            let obj = this._copy(params);
             let whereSqlStr = '';
             let val = '',fieldModel;
     
@@ -606,7 +607,7 @@ module.exports = class SqlServerORM {
                 if(typeof fieldModel === 'string')
                     fieldModel = {type:fieldModel}
 
-                val = this.#readWithSchema(val,obj,fieldModel,'whereclause')
+                val = this._readWithSchema(val,obj,fieldModel,'whereclause')
     
                 if(val == null){
                    delete obj[prop]; //null will be discarded
@@ -645,7 +646,7 @@ module.exports = class SqlServerORM {
                 for (let prop in obj){
                   
                     val = obj[prop];
-                    fieldModel = this.#determineFieldModel(val)
+                    fieldModel = this._determineFieldModel(val)
                     processField(prop);
                 }
     

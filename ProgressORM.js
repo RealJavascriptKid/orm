@@ -37,7 +37,7 @@
         this.dateFormat = dateFormat || 'YYYY-MM-DD'; //used alongside moment
         this.dateTimeFormat = dateTimeFormat || 'YYYY-MM-DD HH:mm:ss';
         this.timeFormat = timeFormat || 'HHmm';
-        this._overrideSchemaStrict = overrideSchemaStrict || false; //if true then after schema is overriden then it will remove additional fields 
+        this._overrideSchemaStrict = overrideSchemaStrict || false; //if true then after schema is overriden then it will REMOVE fields that are NOT overridden
         this._schemas = {}
         this._schemaPath =  schemaPath || `./schemas/progress/${this.dbName.toLowerCase()}/`
         if(!this._schemaPath.endsWith('/'))

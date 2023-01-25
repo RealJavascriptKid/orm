@@ -946,7 +946,7 @@
         if(!where.startsWith('WHERE '))
             throw {code:'PROVIDE_FILTER_CRITERIA',message: `Please provide valid filter criteria`}
 
-        let result = await dbo.sql(`SELECT top 1 ${orm.makeSQLSelector(schema)} 
+        let result = await dbo.sql(`SELECT top 1 ${this.makeSQLSelector(schema)} 
                    FROM ${this.schemaOwner}."${tableName}" 
                    ${where}
                    with (nolock)
@@ -970,7 +970,7 @@
         if(!where.startsWith('WHERE '))
            throw {code:'PROVIDE_FILTER_CRITERIA',message: `Please provide valid filter criteria`}
     
-         let results = await dbo.sql(`SELECT ${orm.makeSQLSelector(schema)} 
+         let results = await dbo.sql(`SELECT ${this.makeSQLSelector(schema)} 
                     FROM ${this.schemaOwner}."${tableName}" 
                     ${where}
                     with (nolock)

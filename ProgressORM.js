@@ -307,46 +307,68 @@
                 fieldModel.format = fieldModel.format || this.dateFormat;
                 if(!fieldValue)
                     return null;
+                    
                 else if(fieldValue instanceof Date){
                     return `${quote}${moment(fieldValue).format(fieldModel.format)}${quote}`
 
-                }else if(fieldValue instanceof moment)
+                }
+                
+                else if(fieldValue instanceof moment)
                     return `${quote}${fieldValue.format(fieldModel.format)}${quote}`
+
                 else if(fieldValue === 'SYSTIMESTAMP')
                     return `${quote}${moment().format(fieldModel.format)}${quote}`
+
+                else if(moment(fieldValue, fieldModel.format, false).isValid())
+                    return  `${quote}${moment(fieldValue).format(fieldModel.format)}${quote}`
                 else    
-                    return `${quote}${fieldValue}${quote}`;
+                    return null; 
                 break;
             case 'datetime':
                 fieldModel.format = fieldModel.format || this.dateTimeFormat;
                 if(!fieldValue)
                     return null;
+
                 else if(fieldValue instanceof Date){
                     return `${quote}${moment(fieldValue).format(fieldModel.format)}${quote}`
 
-                }else if(fieldValue instanceof moment)
-                    return `${quote}${fieldValue.format(fieldModel.format)}${quote}`
-                else if(fieldValue === 'SYSTIMESTAMP')
-                    return `${fieldValue}`   
-                else{                    
-                    //return `${quote}${fieldValue}${quote}`;
-                    return `${quote}${moment(fieldValue).format(fieldModel.format)}${quote}`
                 }
+                
+                else if(fieldValue instanceof moment)
+                    return `${quote}${fieldValue.format(fieldModel.format)}${quote}`
+
+                else if(fieldValue === 'SYSTIMESTAMP')
+                    return `${fieldValue}`  
+                    
+                else if(moment(fieldValue, fieldModel.format, false).isValid())
+                    return  `${quote}${moment(fieldValue).format(fieldModel.format)}${quote}`
+
+                else    
+                    return null;               
                     
                 break;
             case 'time':
                 fieldModel.format = fieldModel.format || this.timeFormat;
                 if(!fieldValue)
                     return null;
+
                 else if(fieldValue instanceof Date){
                     return `${quote}${moment(fieldValue).format(fieldModel.format)}${quote}`
 
-                }else if(fieldValue instanceof moment)
+                }
+                
+                else if(fieldValue instanceof moment)
                     return `${quote}${fieldValue.format(fieldModel.format)}${quote}`
+
                 else if(fieldValue === 'SYSTIMESTAMP')
                     return `${quote}${moment().format(fieldModel.format)}${quote}`
-                else
-                    return `${quote}${fieldValue}${quote}`;
+
+                else if(moment(fieldValue, fieldModel.format, false).isValid())
+                    return  `${quote}${moment(fieldValue).format(fieldModel.format)}${quote}`
+
+                else    
+                    return null;  
+
                 break;
             case 'integer':                
                 if(fieldValue == null)

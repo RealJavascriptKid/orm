@@ -283,8 +283,10 @@ module.exports = class SqlServerORM {
                 else if(fieldValue === 'CURRENT_TIMESTAMP')
                     return `'${moment().format(fieldModel.format)}'`
 
+                else if(moment(fieldValue, fieldModel.format, false).isValid())
+                    return  `'${moment(fieldValue).format(fieldModel.format)}'`
                 else    
-                    return `'${fieldValue}'`;
+                    return null;  
                 break;
             case 'datetime':
                 fieldModel.format = fieldModel.format || this.dateTimeFormat;
@@ -303,10 +305,11 @@ module.exports = class SqlServerORM {
                 else if(fieldValue === 'CURRENT_TIMESTAMP')
                     return `'${moment().format(fieldModel.format)}'` 
 
-                else{                    
-                    //return `'${fieldValue}'`;
-                    return `'${moment(fieldValue).format(fieldModel.format)}'`
-                }
+                else if(moment(fieldValue, fieldModel.format, false).isValid())
+                    return  `'${moment(fieldValue).format(fieldModel.format)}'`
+                else    
+                    return null;
+
                 break;
             case 'time':
                 fieldModel.format = fieldModel.format || this.timeFormat;
@@ -322,8 +325,10 @@ module.exports = class SqlServerORM {
                 else if(fieldValue === 'CURRENT_TIMESTAMP')
                     return `'${moment().format(fieldModel.format)}'`
 
-                else
-                    return `'${fieldValue}'`;
+               else if(moment(fieldValue, fieldModel.format, false).isValid())
+                    return  `'${moment(fieldValue).format(fieldModel.format)}'`
+                else    
+                    return null;
                 break;
             case 'integer':                
                 if(fieldValue == null)

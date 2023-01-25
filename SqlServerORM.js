@@ -716,10 +716,25 @@ module.exports = class SqlServerORM {
         if(!schema)
             schema = this.getSchema(tableName) 
     
-       let data = this.generateInsertQueryDataHelper(params, schema)
-    
+        let data;    
+
+       if(Array.isArray(params) && params.length){ //if it is array then it means we are inserting multiple records
+
+            let values = [],fields;
+            for(let row of params){
+                data = this.generateInsertQueryDataHelper(row, schema)  
+                if(!fields)
+                    fields = data.fields;
+                values.push(`(${data.values})`)    
+            }
+
+            return dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${fields}) VALUES(${values.join(',')})`);
+
+       }
+       
+       data = this.generateInsertQueryDataHelper(params, schema)  
+
        return dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${data.fields})  VALUES(${data.values})`);
-    
     
     }
     

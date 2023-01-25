@@ -1011,12 +1011,25 @@
     async insert(dbo, tableName, params,schema){
 
         if(!schema)
-            schema = await this.getSchema(tableName)     
-    
-       let data = this.generateInsertQueryDataHelper(params, schema)
-    
-       return dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${data.fields})  VALUES(${data.values})`);
-    
+            schema = await this.getSchema(tableName)    
+            
+       let arr = (Array.isArray(params))?params:[params];
+       
+       //I can use Promise.all() but for now I'm keeping it one at time since this is PROGRESS ORM  so 
+       //we don't necessarily want to consume all db agents
+       let results = [];
+       for(let row of arr){
+
+            let data = this.generateInsertQueryDataHelper(row, schema)
+                
+            let result = await dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${data.fields})  VALUES(${data.values})`);
+            results.push(result)
+       }
+
+       if(results.length === 1)
+          return results[0];
+          
+        return results;
     
     }
     

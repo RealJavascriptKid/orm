@@ -728,7 +728,7 @@ module.exports = class SqlServerORM {
                 values.push(`(${data.values})`)    
             }
 
-            return dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${fields}) VALUES(${values.join(',')})`);
+            return dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${fields}) VALUES ${values.join(',')}`);
 
        }
        

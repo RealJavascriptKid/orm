@@ -8,6 +8,7 @@ module.exports = class SqlServerORM {
         this._schemaPath = null;
         this._sequenceMap = null;
         this._overrideSchemaStrict = null;
+        this._fixNVP = null; 
         return this._init(opts)
     }
 
@@ -19,7 +20,8 @@ module.exports = class SqlServerORM {
                   dateTimeFormat,
                   timeFormat,
                   overrideSchemaStrict,
-                  schemaOptions
+                  schemaOptions,
+                  fixNVPs //CFS NVP fields
                 }){
         if(!dbo || typeof dbo !== 'object')
             throw `"dbo" must be provided. It is needed to get schema`
@@ -28,6 +30,7 @@ module.exports = class SqlServerORM {
             throw `"dbName" must be provided`
 
 
+        this._fixNVP = fixNVPs || false; //if true then when inserting or updating if there is NameValuePairs field and there is corresponding field in schema it will remove it from NVP and put it in real field           
         this.schemaOwner = schemaOwner || 'dbo'                    
         this.dbName = dbName;
         this.type = 'sqlserver';
@@ -390,6 +393,112 @@ module.exports = class SqlServerORM {
         return fieldModel;
     }
 
+    _nvpToObject(n) {
+        if(!n) return {};           
+        var a = n.split('\u0002'), o = {}, s = [];
+        for (var i = 0; i < a.length; i++) {
+            s = a[i].split('=');
+            if (s.length == 2)
+                o[s[0].toLowerCase()] = s[1];
+        }
+        return o;
+    }
+
+    _objectToNvp(obj){
+        let nvp = [];
+        for(let prop in obj){
+            let item = obj[prop];
+            if(typeof item == 'undefined' || typeof item == 'object' || typeof item == 'function'){
+                //nvp.push(prop.toLowerCase() + '=');
+                continue;
+            }
+            nvp.push(prop.toLowerCase() + '=' + item);
+        }
+        return nvp.join('\u0002')
+    }
+
+    //returns the copy of schema in lowercase properties
+    _getLowerCasedSchema(schema){
+        let lcSchema = {};
+        Object.keys(schema).map(fieldName => {
+            lcSchema[fieldName.toLowerCase()] = {fieldName,fieldSchema:schema[fieldName]};
+        })
+
+        return lcSchema;
+    }
+
+    _normalizeNVPFields(obj,schema){
+
+        if(!obj.NameValuePairs)
+            return obj;
+
+        //step 1) make schema keys lowercase
+        let schemaLC = this._getLowerCasedSchema(schema);
+        
+        //step 2) convert nvp to lower cased object so that we
+        let NVP = this._nvpToObject(obj.NameValuePairs)
+        let FinalNVP = {},fieldNamesToRemoveFromNVP = [];
+
+        for(let prop in NVP){
+
+            let fieldObj = schemaLC[prop];
+            if(fieldObj == null)
+                continue;
+
+            if(obj[fieldObj.fieldName] != null){ //if there is already value assigned to actual field then it takes precedence over NVP value
+                fieldNamesToRemoveFromNVP.push(prop)
+                continue;        
+            }
+
+            let fieldSchema = fieldObj.fieldSchema    
+
+            if(typeof fieldSchema === 'string')
+                fieldSchema = {type:fieldSchema}
+       
+            let fieldValue = NVP[prop]; //get NVP value
+           
+           
+            //convert nvp value
+            switch(fieldSchema.type){
+                // case 'date':
+
+                //     break;
+                // case 'datetime': 
+
+                //     break;
+                // case 'time':
+
+                //     break;
+                case 'integer':                        
+                    fieldValue = parseInt(fieldValue)    
+                    break; 
+                case 'decimal':                           
+                    fieldValue =  parseFloat(fieldValue)    
+                    break; 
+                case 'boolean':                        
+                    fieldValue =  (['y','yes','1','true'].includes(fieldValue.toLowerCase()))?true:false;
+                    break;   
+            }
+
+            if(fieldValue == null)
+                continue;
+
+            fieldNamesToRemoveFromNVP.push(prop)
+
+            FinalNVP[fieldObj.fieldName] = fieldValue;
+        }
+
+        for(let prop of fieldNamesToRemoveFromNVP){
+             delete NVP[prop]
+        }
+
+        obj.NameValuePairs = this._objectToNvp(NVP);
+
+        obj = Object.assign(obj,FinalNVP);
+
+        return obj;
+    }
+
     _copy(params){
         let moment = this.moment;
         let obj = {}; //let obj = JSON.parse(JSON.stringify(params))//copying
@@ -433,7 +542,7 @@ module.exports = class SqlServerORM {
     generateInsertQueryDataHelper(params,schema){ 
         let obj = this._copy(params);
         let fields = [],values = []; 
-        let val = '',fieldModel,requiredFails = [];
+        let val = '',fieldModel,requiredFails = [], hasNVP = false;
 
         let processField = (prop) => {
 
@@ -443,6 +552,8 @@ module.exports = class SqlServerORM {
             val = this._readWithSchema(val,obj,fieldModel)
 
             this._checkRequiredStatus(prop,val,fieldModel,requiredFails,'insert')
+
+           
 
             if(val == null){
                delete obj[prop]; //null will be discarded
@@ -454,7 +565,7 @@ module.exports = class SqlServerORM {
         }
 
         if(schema){
-
+            
             if(schema instanceof Array){
                 
                 fieldModel = {type:'any'};
@@ -465,6 +576,11 @@ module.exports = class SqlServerORM {
                 }
 
             }else{
+
+                if(this._fixNVP && schema['NameValuePairs']){
+                    obj = this._normalizeNVPFields(obj,schema)
+                }
+
                 for (let prop in schema){
 
                     val = obj[prop];
@@ -483,7 +599,7 @@ module.exports = class SqlServerORM {
                 processField(prop);
             }
 
-        }
+        }       
 
         if(requiredFails.length){
             throw {
@@ -534,6 +650,10 @@ module.exports = class SqlServerORM {
                 }
 
             }else{
+
+                if(this._fixNVP && schema['NameValuePairs']){
+                    obj = this._normalizeNVPFields(obj,schema)
+                }
                 
                 for (let prop in schema){
 

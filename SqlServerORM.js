@@ -309,7 +309,7 @@ module.exports = class SqlServerORM {
                     return `'${moment().format(fieldModel.format)}'` 
 
                 else if(moment(fieldValue, fieldModel.format, false).isValid())
-                    return  `'${moment(fieldValue).format(fieldModel.format)}'`
+                    return  `'${moment(fieldValue, fieldModel.format).format(fieldModel.format)}'`
                 else    
                     return null;
 
@@ -329,7 +329,7 @@ module.exports = class SqlServerORM {
                     return `'${moment().format(fieldModel.format)}'`
 
                else if(moment(fieldValue, fieldModel.format, false).isValid())
-                    return  `'${moment(fieldValue).format(fieldModel.format)}'`
+                    return  `'${moment(fieldValue, fieldModel.format).format(fieldModel.format)}'`
                 else    
                     return null;
                 break;

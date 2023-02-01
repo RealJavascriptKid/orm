@@ -341,7 +341,7 @@
                     return `${fieldValue}`  
                     
                 else if(moment(fieldValue, fieldModel.format, false).isValid())
-                    return  `${quote}${moment(fieldValue).format(fieldModel.format)}${quote}`
+                    return  `${quote}${moment(fieldValue, fieldModel.format).format(fieldModel.format)}${quote}`
 
                 else    
                     return null;               
@@ -364,7 +364,7 @@
                     return `${quote}${moment().format(fieldModel.format)}${quote}`
 
                 else if(moment(fieldValue, fieldModel.format, false).isValid())
-                    return  `${quote}${moment(fieldValue).format(fieldModel.format)}${quote}`
+                    return  `${quote}${moment(fieldValue, fieldModel.format).format(fieldModel.format)}${quote}`
 
                 else    
                     return null;  

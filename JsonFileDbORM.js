@@ -3,18 +3,23 @@ module.exports = class JsonFileDbORM {
   constructor(opts) {
     this._schemas = null;
     this._schemaPath = null;
-    this._dbJsonFile = null;
+    this._dataPath = null;
     this._sequenceMap = null;
     this._jsonSpaces = 4;
     this._overrideSchemaStrict = null;
     this._fixNVP = null;
     this._storage = {};
+    this._indexStorage = {}
+    this._useIndexes = false; //global flag for using indexes
+
     return this._init(opts);
   }
 
   async _init({
     dbName,
-    dbJsonFile, //file where we want to store the data of JSON data   
+    schemaPath,
+    dataPath, //file where we want to store the data of JSON data 
+    useIndexes,  
     dateFormat,
     dateTimeFormat,
     timeFormat,
@@ -23,14 +28,15 @@ module.exports = class JsonFileDbORM {
     schemaOptions,
     fixNVPs, //CFS NVP fields
   }) {
-    if (!dbJsonFile || typeof dbJsonFile !== "string")
-      throw `"dbJsonFile" must be provided. It is needed to to read and store database data`;
+    if (!dataPath || typeof dataPath !== "string")
+      throw `"dataPath" must be provided. It is needed to to read and store database data`;
 
     if (!dbName) throw `"dbName" must be provided`;
 
     this._fixNVP = fixNVPs || false; //if true then when inserting or updating if there is NameValuePairs field and there is corresponding field in schema it will remove it from NVP and put it in real field
+    this._useIndexes = useIndexes || false; 
     this.dbName = dbName;
-    this.type = "jsonfile";
+    this.type = "jsonfiledb";
     this.schemaOptions = schemaOptions || {};
     this.moment = require("moment");
     this.dateFormat = dateFormat || "YYYY-MM-DD"; //used alongside moment
@@ -39,8 +45,16 @@ module.exports = class JsonFileDbORM {
     this._overrideSchemaStrict = overrideSchemaStrict || false; //if true then after schema is overriden then it will REMOVE fields that are NOT overridden
   
 
-    this._dbJsonFile = dbJsonFile;
-    if (!this._dbJsonFile.endsWith(".json")) this._dbJsonFile += ".json";
+    this._dataPath = dataPath;
+    if(!this._dataPath.endsWith('/'))
+        this._dataPath += '/';
+
+    this._schemaPath =  schemaPath || `./schemas/jsonfiledb/${this.dbName.toLowerCase()}/`
+    if(!this._schemaPath.endsWith('/'))
+        this._schemaPath += '/';
+
+    if(this._schemaPath === this._dataPath)
+       throw `Schema and Data folders should be seperated`     
 
     //this._sequenceMap = require(`./schemas/sqlserver/${this.dbName.toLowerCase()}/tableSequenceMap.json`); //used by getTableSchema to automatically figure out ID fields
 
@@ -51,67 +65,107 @@ module.exports = class JsonFileDbORM {
     return this;
   }
 
-  async _populateData() {
-    const fs = require("fs");
-    let filePath = this._dbJsonFile;
-    // File existence check
-    let stats;
-    try {
-      stats = fs.statSync(filePath);
-    } catch (err) {
-      if (err.code === "ENOENT") {
-        /* File doesn't exist */
-        return;
-      } else if (err.code === "EACCES") {
-        throw new Error(`Cannot access path "${filePath}".`);
-      } else {
-        // Other error
-        throw new Error(
-          `Error while checking for existence of path "${filePath}": ${err}`
-        );
+  async _readAllJsonFilesInFolderAsObject(dir){
+
+    const fs = require('fs');
+    const path = require('path')
+
+    const jsonsInDir = fs.readdirSync(dir).filter(file => path.extname(file) === '.json');
+
+    let jsonFiles = {}
+    jsonsInDir.forEach(file => {
+      const fileData = fs.readFileSync(path.join(dir, file));
+      const json = JSON.parse(fileData.toString());
+      jsonFiles[path.parse(file).name] = json;
+    });
+
+    return jsonFiles;
+
+  }
+
+
+  async _updateRecordIndexes(rowId,row,table,schema){
+
+      if(!schema._meta || !schema._meta.indexActive || schema._meta.indexes == null)
+          return;
+
+      if(!this._indexStorage[table]){
+          this._indexStorage[table] = {};
       }
-    }
-    /* File exists */
-    try {
-      fs.accessSync(filePath, fs.constants.R_OK | fs.constants.W_OK);
-    } catch (err) {
-      throw new Error(
-        `Cannot read & write on path "${filePath}". Check permissions!`
-      );
-    }
-    if (stats.size > 0) {
-      let data;
-      try {
-        data = fs.readFileSync(filePath);
-      } catch (err) {
-        throw err; // TODO: Do something meaningful
+         
+
+      let idxStore = this._indexStorage[table];
+
+
+      for(let idx in schema._meta.indexes){
+          
+        if(!idxStore[idx])
+            idxStore[idx] = {};
+
+        let key = [];    
+        for(let field of schema._meta.indexes[idx]){ //iterate index fields to create key
+          key.push(row[field])
+        } 
+        key = key.join('|');
+
+        let  index = idxStore[idx]
+
+        if(!index[key])
+          index[key] = []
+        
+        index[key].push(row)
+
       }
 
-      try {
-        data = JSON.parse(data);
-      } catch (e) {
-        console.error(
-          "Given filePath is not empty and its content is not valid JSON."
-        );
-        throw e;
-      }
-      if(typeof data._meta !== 'object' || Array.isArray(data._meta)){
-         data._meta = {
-            sequenceValues:{}, //pretenting db sequences
-            schemas:{}, //
-         }
-      }
-      this._storage = data;
+  }
+
+  async _populateData() {
+
+    this._schemas  = await this._readAllJsonFilesInFolderAsObject(this._schemaPath);
+   
+    let data = await this._readAllJsonFilesInFolderAsObject(this._dataPath);
+
+    for(let tableName in data){
+        let schema = this._schemas[tableName];
+        if(!schema)
+            continue;
+
+        this._storage[tableName] = data[tableName];  
+
+        let tableData  = this._storage[tableName];
+
+         if(typeof tableData._meta !== 'object' || Array.isArray(tableData._meta)){
+            tableData._meta = {
+                sequenceValues:{}, //pretenting to be db sequences
+            }
+        }
+        
+        if(!this._useIndexes)           
+             continue;  //we are not using indexes so no point to index data
+        
+         
+        for(let id in tableData){
+            if(id === '_meta')
+               continue;
+            await this._updateRecordIndexes(id,tableData[id],tableName,schema)
+        }
+
     }
+
+     
+      // this._storage = data;
+    
+      //this._storage = data;
+
   }
 
   getSchema(schema) {
     if(schema === '_meta')
         throw `"_meta" is reserved key cannot use it has tableName`
-    if (!this._storage._meta.schemas[schema]) 
+    if (!this.schemas[schema]) 
         return null;
 
-    return JSON.parse(JSON.stringify(this._storage._meta.schemas[schema])); //we always should return the copy of schema so that it won't get mutated
+    return JSON.parse(JSON.stringify(this.schemas[schema])); //we always should return the copy of schema so that it won't get mutated
   }
 
   getDateTimeFromDateAndTime(dt, t) {
@@ -499,6 +553,8 @@ module.exports = class JsonFileDbORM {
         }
 
         for (let prop in schema) {
+          if(prop === '_meta') //reserved
+              continue;
             val = obj[prop];
             fieldModel = schema[prop];
             processField(prop);
@@ -513,7 +569,7 @@ module.exports = class JsonFileDbORM {
         schema[prop] = fieldModel;
         processField(prop);
       }
-      this._storage._meta.schemas[table] = schema;
+      this.schemas[table] = schema;
     }
 
     if (requiredFails.length) {
@@ -562,6 +618,8 @@ module.exports = class JsonFileDbORM {
         }
 
         for (let prop in schema) {
+          if(fieldName === '_meta') //reserved
+              continue;
           val = obj[prop];
           fieldModel = schema[prop];
           processField(prop);
@@ -597,6 +655,8 @@ module.exports = class JsonFileDbORM {
 
     let fields = [];
     for (let fieldName in schema) {
+      if(fieldName === '_meta') //reserved
+         continue;
       let type = schema[fieldName];
       if (typeof type === "object") {
         if (type.preventSelection)
@@ -649,6 +709,8 @@ module.exports = class JsonFileDbORM {
     if (schema) {
    
         for (let prop in schema) {
+          if(prop === '_meta') //reserved
+              continue;
           val = obj[prop];
           fieldModel = schema[prop];
           processField(prop);
@@ -696,8 +758,8 @@ module.exports = class JsonFileDbORM {
     return result.length ? result[0] : null;
   }
 
-  async read(tableName, query, schema) {
-    if (!schema) schema = this.getSchema(tableName);
+  async read(tableName, query) {
+    let schema = this.getSchema(tableName);
 
     let where = this.generateSimpleWhereClause(query, schema);
 
@@ -728,7 +790,6 @@ module.exports = class JsonFileDbORM {
             data._id = results.length;
             recordsAdded.push(JSON.parse(JSON.stringify(data)));
        }
-       await this.commit();
 
        if(recordsAdded.length === 1)
           return recordsAdded[0];
@@ -773,13 +834,20 @@ module.exports = class JsonFileDbORM {
     return dbo.sql(`DELETE FROM ${this.schemaOwner}."${tableName}" ${where}`);
   }
 
+  async _write(file,data) {
+      const fs = require('fs')
+      return new Promise((res,rej) => {
+          fs.writeFile(file, JSON.stringify(data, null, this.jsonSpaces), (err) => {
+              if (err) return rej(err);
+              res();
+          });
+      })  
+  }
+
   async commit() {
-    const fs = require('fs')
-    return new Promise((res,rej) => {
-        fs.writeFile(this._dbJsonFile, JSON.stringify(this._storage, null, this.jsonSpaces), (err) => {
-            if (err) return rej(err);
-            res();
-        });
-    })    
+      const path = require('path')
+      for(let tableName in this._storage){
+          await this._write(path.join(this._storage[tableName], `${tableName}.json`))
+      }
   }
 };

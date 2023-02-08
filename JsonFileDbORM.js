@@ -1,7 +1,7 @@
 
 module.exports = class JsonFileDbORM {
   constructor(opts) {
-    this._schemas = null;
+    this._schemas = {};
     this._schemaPath = null;
     this._dataPath = null;
     this._sequenceMap = null;
@@ -60,8 +60,6 @@ module.exports = class JsonFileDbORM {
 
     if(jsonSpaces != null)
         this._jsonSpaces = jsonSpaces;
-
-    await this._populateData();
     return this;
   }
 
@@ -119,53 +117,84 @@ module.exports = class JsonFileDbORM {
 
   }
 
-  async _populateData() {
-
-    this._schemas  = await this._readAllJsonFilesInFolderAsObject(this._schemaPath);
+  async _populateData(tableName) {
+    
+    const path = require('path')
+     
+    let schema  = await this._readFile(path.join(this._schemaPath, `${tableName}.json`));
    
-    let data = await this._readAllJsonFilesInFolderAsObject(this._dataPath);
+    let tableData = await this._readFile(path.join(this._dataPath, `${tableName}.json`));
 
-    for(let tableName in data){
-        let schema = this._schemas[tableName];
-        if(!schema)
-            continue;
+    if(schema){
+      
+        this._schemas[tableName] = schema;
 
-        this._storage[tableName] = data[tableName];  
+        if(!schema._meta)
+            schema._meta = {};
+        
+        //restructure indexes object to prioritize indexes
+        if(schema._meta.indexes){
 
-        let tableData  = this._storage[tableName];
+             let priority = []
+             for(let idxName in schema._meta.indexes){
+                  schema._meta.indexes[idxName].idxName = idxName;
+                  priority.push({
+                     name:idxName,
+                     fields:schema._meta.indexes[idxName]
+                  });
+             }
+            schema._meta.indexesPriority = priority.sort((a,b) => b.fields.length - a.fields.length);
 
-         if(typeof tableData._meta !== 'object' || Array.isArray(tableData._meta)){
-            tableData._meta = {
-                sequenceValues:{}, //pretenting to be db sequences
-            }
         }
-        
-        if(!this._useIndexes)           
-             continue;  //we are not using indexes so no point to index data
-        
-         
-        for(let id in tableData){
-            if(id === '_meta')
-               continue;
-            await this._updateRecordIndexes(id,tableData[id],tableName,schema)
+
+        for(let i in schema){
+
+            let field = schema[i];
+
+            if(i === '_meta' || typeof field !== 'object')
+              continue;
+
+            //finding id field
+            if(field.isID){
+                schema._meta.idField = i;
+                break;
+            }
+
+
         }
 
     }
+        
 
-     
-      // this._storage = data;
+
+    this._storage[tableName] = tableData;  
+
+    if(typeof tableData._meta !== 'object' || Array.isArray(tableData._meta)){
+        tableData._meta = {
+            sequenceValues:{}, //pretenting to be db sequences
+        }
+    }
     
-      //this._storage = data;
+    if(!this._useIndexes)           
+        return;
+    
+      
+    for(let id in tableData){
+        if(id === '_meta')
+            continue;
+        await this._updateRecordIndexes(id,tableData[id],tableName,schema)
+    }
 
   }
 
-  getSchema(schema) {
+  async _getSchema(schema) {
     if(schema === '_meta')
         throw `"_meta" is reserved key cannot use it has tableName`
-    if (!this.schemas[schema]) 
-        return null;
+    if (!this._schemas[schema]){
+         await this._populateData(schema)
+    } 
 
-    return JSON.parse(JSON.stringify(this.schemas[schema])); //we always should return the copy of schema so that it won't get mutated
+    return JSON.parse(JSON.stringify(this._schemas[schema])); //we always should return the copy of schema so that it won't get mutated
   }
 
   getDateTimeFromDateAndTime(dt, t) {
@@ -644,48 +673,8 @@ module.exports = class JsonFileDbORM {
     return updateSqlStr;
   }
 
-  makeSQLSelector(schema, prefix) {
-    if (typeof schema === "string") schema = this.getSchema(schema);
-
-    prefix = prefix ? prefix + "." : "";
-
-    if (Array.isArray(schema)) {
-      return schema.map((fieldName) => `${prefix}"${fieldName}"`).join(",");
-    }
-
-    let fields = [];
-    for (let fieldName in schema) {
-      if(fieldName === '_meta') //reserved
-         continue;
-      let type = schema[fieldName];
-      if (typeof type === "object") {
-        if (type.preventSelection)
-          //means our schema has defined that we don't want this field to apear in select clause
-          continue;
-        type = type.type;
-      }
-
-      switch (type) {
-        case "date":
-          fieldName = `convert(varchar, ${prefix}"${fieldName}", 23) as '${fieldName}'`;
-          break;
-        case "datetime":
-          fieldName = `convert(varchar, ${prefix}"${fieldName}", 121) as '${fieldName}'`;
-          break;
-        case "string":
-          fieldName = `ISNULL(${prefix}"${fieldName}",'') as '${fieldName}'`;
-          break;
-        default:
-          fieldName = `${prefix}"${fieldName}"`;
-          break;
-      }
-      fields.push(fieldName);
-    }
-    return fields.join(",");
-  }
 
   generateSimpleWhereClause(params, schema) {
-    if (typeof schema === "string") schema = this.getSchema(schema);
 
     let obj = this._copy(params);
     let whereSqlStr = "";
@@ -740,43 +729,106 @@ module.exports = class JsonFileDbORM {
     }
   }
 
-  async readOne(tableName, query, schema) {
-    if (!schema) schema = this.getSchema(tableName);
+  async _applyIndex(tableName,schema,query){
 
-    let where = this.generateSimpleWhereClause(query, schema);
+        let idField = query[schema._meta.idField];
+        if(idField != null)
+              return [this._copyRow(this._storage[tableName][idField])]
 
-    if (!where.startsWith("WHERE "))
-      throw {
-        code: "PROVIDE_FILTER_CRITERIA",
-        message: `Please provide valid filter criteria`,
-      };
+       if(!schema._meta || !schema._meta.indexesPriority || !schema._meta.indexesPriority.length)
+            return  Object.values(this._storage[tableName]) // full table result 
 
-    let result = await dbo.sql(`SELECT top 1 ${this.makeSQLSelector(schema)} 
-                    FROM ${this.schemaOwner}."${tableName}" with (nolock)
-                    ${where}
-                    `);
+        let currentidx,chooseCurrentIdx,key = [];
+        for(currentidx of schema._meta.indexesPriority){
+          
+            key = []
+            chooseCurrentIdx = true;
+            for(let idxField of currentidx.fields){
+                if(typeof query[idxField] === 'undefined'){
+                    chooseCurrentIdx = false;
+                    break; //break inner loop
+                }
+                key.push(query[idxField])
+            }
+
+            if(chooseCurrentIdx)
+                break; //break outerloop
+        }   
+
+        
+        
+        if(currentidx.fields.length == key.length){         
+            
+            let indexedData = this._indexStorage[tableName][currentidx.name][key.join('|')];
+            
+            if(indexedData){
+
+                // We have found indexedData. No mutate "query" to remove fields that have been used in index applied
+                for(let idxField of currentidx.fields){
+                  delete query[idxField]
+                }
+
+                return  Object.values(indexedData)
+            }
+        }      
+        
+        //it means none-of the index can be used. So, unfortunately return full table result
+        return  Object.values(this._storage[tableName]) 
+       
+  }
+
+  async _copyRow(row){
+     return JSON.parse(JSON.stringify(row))
+  }
+
+  async _applyFilters(data,filters,limit){
+       //WARNING DO NOT MUTATE this._storage or this.indexedStorage directly
+      let result = [];
+
+      for(let row of data){
+          
+           let accept = true;
+           for(let i in filters){
+
+              if(filters[i] != row[i]){
+
+                  accept = false;
+                  break;
+
+              }
+
+           }
+
+           if(accept)
+              result.push(this._copyRow(row))
+           
+
+           if(limit && result.length >= limit)
+              break;
+           
+      }
+      return result;
+  }
+
+  async readOne(tableName, query) {    
+    let result = await this.read(tableName,query,1);
     return result.length ? result[0] : null;
   }
 
-  async read(tableName, query) {
-    let schema = this.getSchema(tableName);
+  async read(tableName, query,limit) {
+    let schema = await this._getSchema(tableName);
 
-    let where = this.generateSimpleWhereClause(query, schema);
+    let data = await this._applyIndex(tableName,schema,query)
+    if(!data.length)
+        return data;
 
-    if (!where.startsWith("WHERE "))
-      throw {
-        code: "PROVIDE_FILTER_CRITERIA",
-        message: `Please provide valid filter criteria`,
-      };
+    data = await this._applyFilters(data,query,limit)
 
-    return dbo.sql(`SELECT ${this.makeSQLSelector(schema)} 
-                       FROM ${this.schemaOwner}."${tableName}" with (nolock)
-                       ${where}
-                       `);
+    return data
   }
 
   async insert(tableName, params, schema) {
-    if (!schema) schema = this.getSchema(tableName);
+    if (!schema) schema = await this._getSchema(tableName);
 
         let arr = (Array.isArray(params))?params:[params];
        
@@ -797,8 +849,8 @@ module.exports = class JsonFileDbORM {
         return recordsAdded;
   }
 
-  async update(tableName, params, query, schema) {
-    if (!schema) schema = this.getSchema(tableName);
+  async update(tableName, params, query) {
+    let schema = await this._getSchema(tableName);
 
     let where = this.generateSimpleWhereClause(query, schema);
 
@@ -820,8 +872,8 @@ module.exports = class JsonFileDbORM {
                `);
   }
 
-  async remove(tableName, query, schema) {
-    if (!schema) schema = this.getSchema(tableName);
+  async remove(tableName, query) {
+    let schema = await this._getSchema(tableName);
 
     let where = this.generateSimpleWhereClause(query, schema);
 
@@ -834,7 +886,7 @@ module.exports = class JsonFileDbORM {
     return dbo.sql(`DELETE FROM ${this.schemaOwner}."${tableName}" ${where}`);
   }
 
-  async _write(file,data) {
+  async _writeFile(file,data) {
       const fs = require('fs')
       return new Promise((res,rej) => {
           fs.writeFile(file, JSON.stringify(data, null, this.jsonSpaces), (err) => {
@@ -844,10 +896,20 @@ module.exports = class JsonFileDbORM {
       })  
   }
 
+  async _readFile(file) {
+    const fs = require('fs')
+    return new Promise((res,rej) => {
+        fs.readFile(file, (err,fileData) => {
+            if (err) return rej(err);            
+            res(JSON.parse(fileData.toString()));
+        });
+    })  
+}
+
   async commit() {
       const path = require('path')
       for(let tableName in this._storage){
-          await this._write(path.join(this._storage[tableName], `${tableName}.json`))
+          await this._writeFile(path.join(this._dataPath, `${tableName}.json`))
       }
   }
 };

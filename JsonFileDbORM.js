@@ -543,6 +543,9 @@ module.exports = class JsonFileDbORM {
     let processField = (prop) => {
       if (typeof fieldModel === "string") fieldModel = { type: fieldModel };
 
+      if(fieldModel.isID && schema._meta.autoId)
+          fieldModel.preventInsert = true; //we don't allow to update ID fields
+
       val = this._readWithSchema(val, obj, fieldModel);
 
       this._checkRequiredStatus(prop, val, fieldModel, requiredFails, "insert");
@@ -571,8 +574,6 @@ module.exports = class JsonFileDbORM {
             throw `ID must be provided`
 
         }
-
-        
 
         if (this._fixNVP && schema["NameValuePairs"]) {
             obj = this._normalizeNVPFields(obj, schema);
@@ -621,7 +622,7 @@ module.exports = class JsonFileDbORM {
       if (typeof fieldModel === "string") fieldModel = { type: fieldModel };
 
       if(fieldModel.isID)
-          fieldModel.preventUpdate = true; //we don't allow to update ID fields
+        fieldModel.preventUpdate = true; //we don't allow to update ID fields
 
       val = this._readWithSchema(val, obj, fieldModel, "update");
 
@@ -781,6 +782,12 @@ module.exports = class JsonFileDbORM {
   }
 
   async _read(tableName,query,limit,schema){
+
+    if(typeof query !== 'object'){  //if query is NOT object then we assume it to be ID field
+        let val = query;
+        query = {};
+        query[schema._meta.idField] = val
+    }       
     
     let data = await this._applyIndex(tableName,schema,query)
     if(!data.length)

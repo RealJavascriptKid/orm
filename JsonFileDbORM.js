@@ -733,7 +733,7 @@ module.exports = class JsonFileDbORM {
 
         let idField = query[schema._meta.idField];
         if(idField != null)
-              return [this._copyRow(this._storage[tableName][idField])]
+              return [this._storage[tableName][idField]]
 
        if(!schema._meta || !schema._meta.indexesPriority || !schema._meta.indexesPriority.length)
             return  Object.values(this._storage[tableName]) // full table result 
@@ -763,7 +763,7 @@ module.exports = class JsonFileDbORM {
             
             if(indexedData){
 
-                // We have found indexedData. No mutate "query" to remove fields that have been used in index applied
+                // We have found indexedData. Now mutate "query" to remove fields that have been used in index applied
                 for(let idxField of currentidx.fields){
                   delete query[idxField]
                 }
@@ -777,8 +777,8 @@ module.exports = class JsonFileDbORM {
        
   }
 
-  async _copyRow(row){
-     return JSON.parse(JSON.stringify(row))
+  async _cloneResult(result){
+     return JSON.parse(JSON.stringify(result))
   }
 
   async _applyFilters(data,filters,limit){
@@ -800,7 +800,7 @@ module.exports = class JsonFileDbORM {
            }
 
            if(accept)
-              result.push(this._copyRow(row))
+              result.push(row)
            
 
            if(limit && result.length >= limit)
@@ -824,7 +824,7 @@ module.exports = class JsonFileDbORM {
 
     data = await this._applyFilters(data,query,limit)
 
-    return data
+    return this._cloneResult(data) //we don't want internal data to be mutated by external code
   }
 
   async insert(tableName, params, schema) {

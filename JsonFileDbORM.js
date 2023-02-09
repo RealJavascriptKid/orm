@@ -81,41 +81,24 @@ module.exports = class JsonFileDbORM {
 
   }
 
+   _applyIndexPriorities(schema){
 
-  async _updateRecordIndexes(rowId,row,table,schema){
+    //restructure indexes object to prioritize indexes
 
-      if(!schema._meta || !schema._meta.indexActive || schema._meta.indexes == null)
-          return;
+    if(!schema._meta.indexes)
+          return
 
-      if(!this._indexStorage[table]){
-          this._indexStorage[table] = {};
+      let priority = []
+      for(let idxName in schema._meta.indexes){
+          schema._meta.indexes[idxName].idxName = idxName;
+          priority.push({
+              name:idxName,
+              fields:schema._meta.indexes[idxName]
+          });
       }
-         
-
-      let idxStore = this._indexStorage[table];
-
-
-      for(let idx in schema._meta.indexes){
-          
-        if(!idxStore[idx])
-            idxStore[idx] = {};
-
-        let key = [];    
-        for(let field of schema._meta.indexes[idx]){ //iterate index fields to create key
-          key.push(row[field])
-        } 
-        key = key.join('|');
-
-        let  index = idxStore[idx]
-
-        if(!index[key])
-          index[key] = []
-        
-        index[key].push(row)
-
-      }
-
+      schema._meta.indexesPriority = priority.sort((a,b) => b.fields.length - a.fields.length);    
   }
+
 
   async _populateData(tableName) {
     
@@ -132,20 +115,8 @@ module.exports = class JsonFileDbORM {
         if(!schema._meta)
             schema._meta = {};
         
-        //restructure indexes object to prioritize indexes
-        if(schema._meta.indexes){
-
-             let priority = []
-             for(let idxName in schema._meta.indexes){
-                  schema._meta.indexes[idxName].idxName = idxName;
-                  priority.push({
-                     name:idxName,
-                     fields:schema._meta.indexes[idxName]
-                  });
-             }
-            schema._meta.indexesPriority = priority.sort((a,b) => b.fields.length - a.fields.length);
-
-        }
+        
+        this._applyIndexPriorities(schema)
 
         for(let i in schema){
 
@@ -157,11 +128,15 @@ module.exports = class JsonFileDbORM {
             //finding id field
             if(field.isID){
                 schema._meta.idField = i;
+                schema._meta.autoId = field.autoId || false
                 break;
             }
 
 
         }
+
+        if(!schema._meta.idField)
+            throw `Unable to populate ${tableName} Id field is not specified in schema`
 
     }
         
@@ -182,7 +157,7 @@ module.exports = class JsonFileDbORM {
     for(let id in tableData){
         if(id === '_meta')
             continue;
-        await this._updateRecordIndexes(id,tableData[id],tableName,schema)
+        await this._addRowToIndexes(tableData[id],tableName,schema)
     }
 
   }
@@ -308,33 +283,33 @@ module.exports = class JsonFileDbORM {
         fieldModel.format = fieldModel.format || this.dateFormat;
         if (!fieldValue) return null;
         else if (fieldValue instanceof Date) {
-          return `'${moment(fieldValue).format(fieldModel.format)}'`;
+          return `${moment(fieldValue).format(fieldModel.format)}`;
         } else if (fieldValue instanceof moment)
-          return `'${fieldValue.format(fieldModel.format)}'`;
+          return `${fieldValue.format(fieldModel.format)}`;
         else if (fieldValue === "CURRENT_TIMESTAMP")
-          return `'${moment().format(fieldModel.format)}'`;
+          return `${moment().format(fieldModel.format)}`;
         else if (moment(fieldValue, fieldModel.format, false).isValid())
-          return `'${moment(fieldValue).format(fieldModel.format)}'`;
+          return `${moment(fieldValue).format(fieldModel.format)}`;
         else return null;
         break;
       case "datetime":
         fieldModel.format = fieldModel.format || this.dateTimeFormat;
         if (!fieldValue) return null;
         else if (fieldValue instanceof Date) {
-          return `'${moment(fieldValue).format(fieldModel.format)}'`;
+          return `${moment(fieldValue).format(fieldModel.format)}`;
         } else if (fieldValue instanceof moment)
-          return `'${fieldValue.format(fieldModel.format)}'`;
+          return `${fieldValue.format(fieldModel.format)}`;
         else if (
           fieldValue === "getdate()" ||
           fieldValue === "CURRENT_TIMESTAMP"
         )
           return `${fieldValue}`;
         else if (fieldValue === "CURRENT_TIMESTAMP")
-          return `'${moment().format(fieldModel.format)}'`;
+          return `${moment().format(fieldModel.format)}`;
         else if (moment(fieldValue, fieldModel.format, false).isValid())
-          return `'${moment(fieldValue, fieldModel.format).format(
+          return `${moment(fieldValue, fieldModel.format).format(
             fieldModel.format
-          )}'`;
+          )}`;
         else return null;
 
         break;
@@ -342,15 +317,15 @@ module.exports = class JsonFileDbORM {
         fieldModel.format = fieldModel.format || this.timeFormat;
         if (!fieldValue) return null;
         else if (fieldValue instanceof Date) {
-          return `'${moment(fieldValue).format(fieldModel.format)}'`;
+          return `${moment(fieldValue).format(fieldModel.format)}`;
         } else if (fieldValue instanceof moment)
-          return `'${fieldValue.format(fieldModel.format)}'`;
+          return `${fieldValue.format(fieldModel.format)}`;
         else if (fieldValue === "CURRENT_TIMESTAMP")
-          return `'${moment().format(fieldModel.format)}'`;
+          return `${moment().format(fieldModel.format)}`;
         else if (moment(fieldValue, fieldModel.format, false).isValid())
-          return `'${moment(fieldValue, fieldModel.format).format(
+          return `${moment(fieldValue, fieldModel.format).format(
             fieldModel.format
-          )}'`;
+          )}`;
         else return null;
         break;
       case "integer":
@@ -375,11 +350,11 @@ module.exports = class JsonFileDbORM {
             ? true
             : false;
         }
-        return `'${fieldValue ? 1 : 0}'`;
+        return fieldValue;
         break;
       default: //default should be string
         if (fieldValue == null) return null;
-        return `'${this.escape(fieldValue)}'`;
+        return `${this.escape(fieldValue)}`;
         break;
     }
   }
@@ -547,10 +522,17 @@ module.exports = class JsonFileDbORM {
     }
   }
 
+  getAutoId(tableName){
+     let id = Date.now().toString(36) + Math.floor(Math.pow(10, 12) + Math.random() * 9*Math.pow(10, 12)).toString(36);
+     if(this._storage[tableName][id]) //if id is already used then recursively get another 1
+        id = this.getAutoId(tableName)
+     return id;
+  }
+
   //reason needed it to gracefully handle nulls and other invalid data types from insert quries
   //use it for complex insert statments For rudementary inserts with less fields I would prefer
   //old school way but it still works
-  generateInsertQueryDataHelper(table,params, schema) {
+  _insertProcess(table,params, schema) {
     let obj = this._copy(params);
     let resultItem = {};
     let val = "",
@@ -574,9 +556,24 @@ module.exports = class JsonFileDbORM {
     };
 
     if (schema) {
-      if (schema instanceof Array) {
-        throw 'Invalid schema format. Scenma cannot be an array'
-      }
+        if (schema instanceof Array) {
+          throw 'Invalid schema format. Scenma cannot be an array'
+        }
+
+        let idField = schema._meta.idField;
+
+        if(schema._meta.autoId){
+          obj[idField] = this.getAutoId(table)
+
+        }else{
+
+          if(obj[idField] == null)
+            throw `ID must be provided`
+
+        }
+
+        
+
         if (this._fixNVP && schema["NameValuePairs"]) {
             obj = this._normalizeNVPFields(obj, schema);
         }
@@ -590,15 +587,16 @@ module.exports = class JsonFileDbORM {
         }
       
     } else {
+      throw `Automatic schema cannot be determined yet. Please provide schema for this table`
       //automatically determine schema
-      schema = {}
-      for (let prop in obj) {
-        val = obj[prop];
-        fieldModel = this._determineFieldModel(val);
-        schema[prop] = fieldModel;
-        processField(prop);
-      }
-      this.schemas[table] = schema;
+      // schema = {}
+      // for (let prop in obj) {
+      //   val = obj[prop];
+      //   fieldModel = this._determineFieldModel(val);
+      //   schema[prop] = fieldModel;
+      //   processField(prop);
+      // }
+      // this.schemas[table] = schema;
     }
 
     if (requiredFails.length) {
@@ -611,15 +609,19 @@ module.exports = class JsonFileDbORM {
     return resultItem;
   }
 
-  generateUpdateQueryDataHelper(params, schema) {
+  _updateProcess(params, schema) {
     let obj = this._copy(params);
-    let updateSqlStr = "";
+    let updates = {};
     let val = "",
       fieldModel,
       requiredFails = [];
 
     let processField = (prop) => {
+      
       if (typeof fieldModel === "string") fieldModel = { type: fieldModel };
+
+      if(fieldModel.isID)
+          fieldModel.preventUpdate = true; //we don't allow to update ID fields
 
       val = this._readWithSchema(val, obj, fieldModel, "update");
 
@@ -629,37 +631,33 @@ module.exports = class JsonFileDbORM {
         delete obj[prop]; //null will be discarded
         return;
       }
-
-      if (updateSqlStr.length) updateSqlStr += ", ";
-      updateSqlStr += ` "${prop}" = ${val} `;
+  
+      updates[prop] = val;
     };
 
     if (schema) {
       if (schema instanceof Array) {
-        fieldModel = { type: "any" };
-        for (let prop of schema) {
-          val = obj[prop];
-          processField(prop);
-        }
-      } else {
-        if (this._fixNVP && schema["NameValuePairs"]) {
-          obj = this._normalizeNVPFields(obj, schema);
-        }
-
-        for (let prop in schema) {
-          if(fieldName === '_meta') //reserved
-              continue;
-          val = obj[prop];
-          fieldModel = schema[prop];
-          processField(prop);
-        }
+        throw `Schema cannot be an Array`
+      } 
+      if (this._fixNVP && schema["NameValuePairs"]) {
+        obj = this._normalizeNVPFields(obj, schema);
       }
-    } else {
-      for (let prop in obj) {
+
+      for (let prop in schema) {
+        if(prop === '_meta') //reserved
+            continue;
         val = obj[prop];
-        fieldModel = this._determineFieldModel(val);
+        fieldModel = schema[prop];
         processField(prop);
       }
+      
+    } else {
+      throw `Auto schema determination is not yet supported`
+      // for (let prop in obj) {
+      //   val = obj[prop];
+      //   fieldModel = this._determineFieldModel(val);
+      //   processField(prop);
+      // }
     }
 
     if (requiredFails.length) {
@@ -670,53 +668,10 @@ module.exports = class JsonFileDbORM {
       };
     }
 
-    return updateSqlStr;
+    return updates;
   }
 
-
-  generateSimpleWhereClause(params, schema) {
-
-    let obj = this._copy(params);
-    let whereSqlStr = "";
-    let val = "",
-      fieldModel;
-
-    let processField = (prop) => {
-      if (typeof fieldModel === "string") fieldModel = { type: fieldModel };
-
-      val = this._readWithSchema(val, obj, fieldModel, "whereclause");
-
-      if (val == null) {
-        delete obj[prop]; //null will be discarded
-        return;
-      }
-
-      if (whereSqlStr.length) whereSqlStr += " AND ";
-      whereSqlStr += ` "${prop}" = ${val} `;
-    };
-
-    if (schema) {
-   
-        for (let prop in schema) {
-          if(prop === '_meta') //reserved
-              continue;
-          val = obj[prop];
-          fieldModel = schema[prop];
-          processField(prop);
-        }
-    } else {
-      for (let prop in obj) {
-        val = obj[prop];
-        fieldModel = this._determineFieldModel(val);
-        processField(prop);
-      }
-    }
-
-    if (whereSqlStr.length) whereSqlStr = `WHERE ${whereSqlStr}`;
-
-    return whereSqlStr;
-  }
-
+  
   async getNextSeq(dbo, seqName) {
     let data = await dbo.sql(
       `select NEXT VALUE FOR ${this.schemaOwner}.${seqName} as "${seqName}"`
@@ -732,8 +687,12 @@ module.exports = class JsonFileDbORM {
   async _applyIndex(tableName,schema,query){
 
         let idField = query[schema._meta.idField];
-        if(idField != null)
-              return [this._storage[tableName][idField]]
+        if(idField != null){
+          if(this._storage[tableName][idField])
+            return [this._storage[tableName][idField]]
+          return [];
+        }
+              
 
        if(!schema._meta || !schema._meta.indexesPriority || !schema._meta.indexesPriority.length)
             return  Object.values(this._storage[tableName]) // full table result 
@@ -757,9 +716,9 @@ module.exports = class JsonFileDbORM {
 
         
         
-        if(currentidx.fields.length == key.length){         
-            
-            let indexedData = this._indexStorage[tableName][currentidx.name][key.join('|')];
+        if(currentidx.fields.length == key.length &&  this._indexStorage[tableName]){         
+            let index = this._indexStorage[tableName][currentidx.name];
+            let indexedData = (index)?index[key.join('|')]:null;
             
             if(indexedData){
 
@@ -767,7 +726,7 @@ module.exports = class JsonFileDbORM {
                 for(let idxField of currentidx.fields){
                   delete query[idxField]
                 }
-
+                console.log("retirning indexed data")
                 return  Object.values(indexedData)
             }
         }      
@@ -815,75 +774,126 @@ module.exports = class JsonFileDbORM {
     return result.length ? result[0] : null;
   }
 
-  async read(tableName, query,limit) {
-    let schema = await this._getSchema(tableName);
+  async read(tableName, query,limit) { 
+    let schema = await this._getSchema(tableName);  
+    let data = await this._read(tableName,query,limit,schema)
+    return this._cloneResult(data) //we don't want internal data to be mutated by external code
+  }
 
+  async _read(tableName,query,limit,schema){
+    
     let data = await this._applyIndex(tableName,schema,query)
     if(!data.length)
         return data;
 
     data = await this._applyFilters(data,query,limit)
 
-    return this._cloneResult(data) //we don't want internal data to be mutated by external code
+    return data
   }
 
-  async insert(tableName, params, schema) {
-    if (!schema) schema = await this._getSchema(tableName);
+  async insert(tableName, params) {
+        let schema = await this._getSchema(tableName);
 
         let arr = (Array.isArray(params))?params:[params];
        
        //I can use Promise.all() but for now I'm keeping it this way
        let recordsAdded = [];
-       let results = this._storage[tableName] || [];
+       let results = this._storage[tableName] || {};
        for(let row of arr){
 
-            let data = this.generateInsertQueryDataHelper(tableName, row, schema)
-            results.push(data)
-            data._id = results.length;
-            recordsAdded.push(JSON.parse(JSON.stringify(data)));
+            let data = this._insertProcess(tableName, row, schema)
+            await this._addRowToIndexes(data,tableName,schema)
+            results[this._getRowId(data,schema)] = data
+            recordsAdded.push(data);
        }
 
        if(recordsAdded.length === 1)
-          return recordsAdded[0];
+          return this._cloneResult(recordsAdded[0]); //we don't want external progam to mutate our data
           
-        return recordsAdded;
+        return this._cloneResult(recordsAdded); //we don't want external progam to mutate our data
   }
 
-  async update(tableName, params, query) {
+  async update(tableName, params, query,limit) {
+
     let schema = await this._getSchema(tableName);
 
-    let where = this.generateSimpleWhereClause(query, schema);
+    let dataToUpdate = await this._read(tableName,query,limit,schema);
 
-    if (!where.startsWith("WHERE "))
-      throw {
-        code: "PROVIDE_FILTER_CRITERIA",
-        message: `Please provide valid filter criteria`,
-      };
+    let updates = this._updateProcess(params, schema);
 
-    //archiving previous
-    //await dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}_History" select * from ${this.schemaOwner}."${tableName}_History" ${where} `)
+    //TODO address indexes while updateing
+    for(let row of dataToUpdate){
 
-    let updateSqlStr = this.generateUpdateQueryDataHelper(params, schema);
+      await this._removeRowFromIndexes(row,tableName,schema)
+      Object.assign(row,updates)
+      //await this._addRowToIndexes(row,tableName,schema)
+    }
 
-    return dbo.sql(`UPDATE ${this.schemaOwner}."${tableName}" 
-               SET                 
-               ${updateSqlStr}
-               ${where} 
-               `);
+    return this._cloneResult(dataToUpdate)
+   
   }
 
-  async remove(tableName, query) {
+  async remove(tableName, query, limit) {
+
     let schema = await this._getSchema(tableName);
 
-    let where = this.generateSimpleWhereClause(query, schema);
+    let dataToDelete = await this._read(tableName,query,limit,schema);
 
-    if (!where.startsWith("WHERE "))
-      throw `Cannot delete without filter criteria`;
+       //TODO address indexes while updateing
+    for(let row of dataToDelete){
 
-    //archiving previous
-    //await dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}_History" select * from ${this.schemaOwner}."${tableName}_History" ${where} `)
+      await this._removeRowFromIndexes(row,tableName,schema)
+      delete this._storage[tableName][this._getRowId(row,schema)]
+    }
 
-    return dbo.sql(`DELETE FROM ${this.schemaOwner}."${tableName}" ${where}`);
+    return this._cloneResult(dataToDelete)
+    
+  }
+
+  _getRowId(row,schema){
+      return row[schema._meta.idField]
+  }
+
+  async _addRowToIndexes(row,table,schema){
+
+    if(!schema._meta || !schema._meta.indexActive || schema._meta.indexes == null)
+        return;
+
+    if(!this._indexStorage[table]){
+        this._indexStorage[table] = {};
+    }
+       
+
+    let idxStore = this._indexStorage[table];
+
+
+    for(let idx in schema._meta.indexes){
+        
+      if(!idxStore[idx])
+          idxStore[idx] = {};
+
+      let key = [];    
+      for(let field of schema._meta.indexes[idx]){ //iterate index fields to create key
+        key.push(row[field])
+      } 
+      key = key.join('|');
+
+      let  index = idxStore[idx]
+
+      if(!index[key])
+        index[key] = []
+      
+      index[key].push(row)
+
+    }
+
+    if(!schema._meta.indexesPriority)
+        this._applyIndexPriorities(schema)
+
+}
+
+  async _removeRowFromIndexes(row,table,schema){
+
   }
 
   async _writeFile(file,data) {
@@ -909,7 +919,7 @@ module.exports = class JsonFileDbORM {
   async commit() {
       const path = require('path')
       for(let tableName in this._storage){
-          await this._writeFile(path.join(this._dataPath, `${tableName}.json`))
+          await this._writeFile(path.join(this._dataPath, `${tableName}.json`),this._storage[tableName])
       }
   }
 };

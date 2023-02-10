@@ -543,9 +543,6 @@ module.exports = class JsonFileDbORM {
     let processField = (prop) => {
       if (typeof fieldModel === "string") fieldModel = { type: fieldModel };
 
-      if(fieldModel.isID && schema._meta.autoId)
-          fieldModel.preventInsert = true; //we don't allow to update ID fields
-
       val = this._readWithSchema(val, obj, fieldModel);
 
       this._checkRequiredStatus(prop, val, fieldModel, requiredFails, "insert");
@@ -787,6 +784,13 @@ module.exports = class JsonFileDbORM {
         let val = query;
         query = {};
         query[schema._meta.idField] = val
+
+        if(!val){ //if there is not where clause
+          let result = Object.values(this._storage[tableName]);
+          if(limit && limit < result.length)
+              result = result.slice(0,limit)
+          return this._cloneResult(result)
+        }            
     }       
     
     let data = await this._applyIndex(tableName,schema,query)
@@ -833,10 +837,27 @@ module.exports = class JsonFileDbORM {
 
       await this._removeRowFromIndexes(row,tableName,schema)
       Object.assign(row,updates)
-      //await this._addRowToIndexes(row,tableName,schema)
+      await this._addRowToIndexes(row,tableName,schema)
     }
 
     return this._cloneResult(dataToUpdate)
+   
+  }
+
+  async updateAll(tableName, params) {
+
+    let schema = await this._getSchema(tableName);   
+
+    let updates = this._updateProcess(params, schema);
+
+    //TODO address indexes while updateing
+    for(let id in this._storage[tableName]){
+      
+      let row = this._storage[tableName][id];
+      await this._removeRowFromIndexes(row,tableName,schema)
+      Object.assign(row,updates)
+      await this._addRowToIndexes(row,tableName,schema)
+    }
    
   }
 
@@ -857,13 +878,18 @@ module.exports = class JsonFileDbORM {
     
   }
 
+  async removeAll(tableName){
+      delete this._storage[tableName];
+      delete this._indexStorage[tableName];
+  }
+
   _getRowId(row,schema){
       return row[schema._meta.idField]
   }
 
   async _addRowToIndexes(row,table,schema){
 
-    if(!schema._meta || !schema._meta.indexActive || schema._meta.indexes == null)
+    if(!schema._meta.indexActive || schema._meta.indexes == null)
         return;
 
     if(!this._indexStorage[table]){
@@ -888,9 +914,9 @@ module.exports = class JsonFileDbORM {
       let  index = idxStore[idx]
 
       if(!index[key])
-        index[key] = []
+        index[key] = {}
       
-      index[key].push(row)
+      index[key][row[schema._meta.idField]] = row
 
     }
 
@@ -900,6 +926,34 @@ module.exports = class JsonFileDbORM {
 }
 
   async _removeRowFromIndexes(row,table,schema){
+
+      if(!schema._meta.indexActive || schema._meta.indexes == null)
+          return;
+
+      if(!this._indexStorage[table])
+          return;
+
+      let idxStore = this._indexStorage[table];
+
+      for(let idx in schema._meta.indexes){
+        
+          if(!idxStore[idx])
+              continue;
+    
+          let key = [];    
+          for(let field of schema._meta.indexes[idx]){ //iterate index fields to create key
+            key.push(row[field])
+          } 
+          key = key.join('|');
+    
+          let  index = idxStore[idx]
+    
+          if(!index[key])
+            continue;
+          
+          delete index[key][row[schema._meta.idField]]
+  
+      }
 
   }
 

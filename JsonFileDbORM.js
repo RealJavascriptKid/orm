@@ -739,7 +739,7 @@ module.exports = class JsonFileDbORM {
        
   }
 
-  async _cloneResult(result){
+  _cloneResult(result){
      return JSON.parse(JSON.stringify(result))
   }
 

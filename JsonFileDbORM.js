@@ -352,6 +352,11 @@ module.exports = class JsonFileDbORM {
         }
         return fieldValue;
         break;
+      case "object": 
+        if (typeof fieldValue !== "object")
+            return null;
+        return this._copy(fieldValue)
+        break;
       default: //default should be string
         if (fieldValue == null) return null;
         return `${this.escape(fieldValue)}`;
@@ -371,6 +376,8 @@ module.exports = class JsonFileDbORM {
     else if (typeof val == "number") {
       if (val % parseInt(val) == 0) fieldModel.type = "integer";
       else fieldModel.type = "decimal";
+    }else if (typeof val == "object") {
+       fieldModel.type = "object";
     }
 
     return fieldModel;
@@ -510,14 +517,14 @@ module.exports = class JsonFileDbORM {
       fieldModel.requiredOnInsert &&
       !fieldModel.preventInsert
     ) {
-      if (val == null || (val === "''" && fieldModel.type === "string"))
+      if (val == null || (val === "" && fieldModel.type === "string"))
         requiredFails.push(prop);
     } else if (
       mode == "update" &&
       fieldModel.requiredOnUpdate &&
       !fieldModel.preventUpdate
     ) {
-      if (val == null || (val === "''" && fieldModel.type === "string"))
+      if (val == null || (val === "" && fieldModel.type === "string"))
         requiredFails.push(prop);
     }
   }

@@ -990,4 +990,24 @@ module.exports = class JsonFileDbORM {
           await this._writeFile(path.join(this._dataPath, `${tableName}.json`),this._storage[tableName])
       }
   }
+
+  determineSchemaFromData(data){
+
+      let params = this._copy(data);
+      if(params instanceof Array){
+         if(!params.length)
+            return null;
+          params = params[i]
+      }
+
+      let schema = {}
+
+      for(let i in params){
+        schema[i] = this._determineFieldModel(params[i]);
+      }
+
+      return schema;
+
+  }
+
 };

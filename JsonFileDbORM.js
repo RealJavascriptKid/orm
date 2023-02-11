@@ -144,19 +144,17 @@ module.exports = class JsonFileDbORM {
 
     this._storage[tableName] = tableData;  
 
-    if(typeof tableData._meta !== 'object' || Array.isArray(tableData._meta)){
-        tableData._meta = {
-            sequenceValues:{}, //pretenting to be db sequences
-        }
-    }
+    // if(typeof tableData._meta !== 'object' || Array.isArray(tableData._meta)){
+    //     tableData._meta = {
+    //         sequenceValues:{}, //pretenting to be db sequences
+    //     }
+    // }
     
     if(!this._useIndexes)           
         return;
     
       
-    for(let id in tableData){
-        if(id === '_meta')
-            continue;
+    for(let id in tableData){        
         await this._addRowToIndexes(tableData[id],tableName,schema)
     }
 

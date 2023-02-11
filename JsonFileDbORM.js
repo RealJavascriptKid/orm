@@ -993,7 +993,7 @@ module.exports = class JsonFileDbORM {
 
   determineSchemaFromData(data){
 
-      let params = this._copy(data);
+      let params = JSON.parse(JSON.stringify(data));
       if(params instanceof Array){
          if(!params.length)
             return null;

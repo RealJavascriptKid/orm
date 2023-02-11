@@ -353,7 +353,7 @@ module.exports = class JsonFileDbORM {
       case "object": 
         if (typeof fieldValue !== "object")
             return null;
-        return this._copy(fieldValue)
+        return this._cloneResult(fieldValue)
         break;
       default: //default should be string
         if (fieldValue == null) return null;

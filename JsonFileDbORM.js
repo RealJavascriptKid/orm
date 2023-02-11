@@ -997,7 +997,7 @@ module.exports = class JsonFileDbORM {
       if(params instanceof Array){
          if(!params.length)
             return null;
-          params = params[i]
+          params = params[0]
       }
 
       let schema = {}

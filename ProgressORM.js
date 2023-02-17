@@ -830,7 +830,68 @@
 
     }
 
+    _getConditionAndValue(obj){
+        let operatorMap = {
+
+            equals:'equals',
+            eq:'equals',
+            '=':'equals',
+           
+
+            greaterhan:'greaterThan',
+            gt:'greaterThan',
+            '>':'greaterThan',
+
+            lessthan:'lessThan',
+            lt:'lessThan',
+            '<':'lessThan',
+
+            greaterorequal:'greaterOrEqual',
+            ge:'greaterOrEqual',
+            '>=':'greaterOrEqual',                
+            '=>':'greaterOrEqual',
+
+            lessorequal:'lessOrEqual',
+            le:'lessOrEqual',
+            '<=':'lessOrEqual',
+            '=<':'lessOrEqual',           
+            
+            startswith:'startsWith',
+            beginswith:'startsWith',
+            sw:'startsWith',
+            '%like':'startsWith',
+
+            endswith:'endsWith',                
+            ew:'endsWith',
+            'like%':'startsWith',
+
+            contains:'contains',                
+            has:'contains',
+            '%like%':'contains',
+
+            includes:'includes',
+            in:'includes',
+            
+        }
+
+        let condition,value = null;
+        for(condition in obj){
+            value = obj[condition]
+            break;
+        }
+
+        if(!condition)
+            throw `Invalid filter specified`
+
+        condition = operatorMap[condition.toLowerCase()];
+        
+        return {condition,value}    
+    }
+
     generateSimpleWhereClause(params,inputSchema){
+
+            if(typeof params === 'string') //it means we are using costum where clause 
+                return params;
 
             if(typeof inputSchema === 'string')
                 inputSchema = this.getSchema(inputSchema)
@@ -850,7 +911,29 @@
                 if(typeof fieldModel === 'string')
                     fieldModel = {type:fieldModel}    
 
-                val = this._readWithSchema(val,obj,fieldModel,'whereclause')
+                    if(typeof val === 'object' && !Array.isArray(val)){
+                        let result = this._getConditionAndValue(val)
+                        val = result.value;
+                        obj[prop] = val;
+                        condition = result.condition;
+    
+                    }    
+    
+                    if(Array.isArray(val)){
+    
+                        if(condition !== 'contains')
+                            throw `Invalid value specified in filter. You can only specify list when using 'contains' condition`
+    
+                        let newVal = [];    
+                        for(let i=0;i<val.length;i++){
+                            let v = this._readWithSchema(val[i],obj,fieldModel,'whereclause')
+                            if(v !== null)
+                                newVal.push(v);
+                        }
+                        val = (newVal.length)?newVal:null;
+    
+                    }else
+                        val = this._readWithSchema(val,obj,fieldModel,'whereclause')
 
                 if(val == null){
                     delete obj[prop]; //null will be discarded
@@ -859,7 +942,19 @@
 
                 if(whereSqlStr.length)    
                     whereSqlStr += ' AND '
-                whereSqlStr += ` "${prop}" = ${val} `; 
+                
+                switch(condition){
+                    case 'equals': whereSqlStr += ` "${prop}" = ${val} `; break;
+                    case 'greaterThan': whereSqlStr += ` "${prop}" > ${val} `; break;
+                    case 'greaterOrEqual': whereSqlStr += ` "${prop}" >= ${val} `; break;
+                    case 'lessThan': whereSqlStr += ` "${prop}" < ${val} `; break;
+                    case 'lessOrEqual': whereSqlStr += ` "${prop}" <= ${val} `; break;
+                    case 'startsWith': whereSqlStr += ` "${prop}" LIKE '${val.slice(1, -1)}%' `; break;
+                    case 'endsWith': whereSqlStr += ` "${prop}" LIKE '%${val.slice(1, -1)}' `; break;
+                    case 'includes': whereSqlStr += ` "${prop}" LIKE '%${val.slice(1, -1)}%' `; break;
+                    case 'contains': whereSqlStr += ` "${prop}" IN (${val.join(',')}) `; break;
+                    
+                }    
             }
 
             let processNVPField = (nvpFields) => {
@@ -878,7 +973,7 @@
                     if(typeof fieldModel === 'string')
                         fieldModel = {type:fieldModel}
     
-                    val = this._readWithSchema(val,nvpFields,fieldModel,'update',false)    
+                    val = this._readWithSchema(val,nvpFields,fieldModel,'whereclause',false)    
                        
                     if(val == null){
                         delete nvpFields[prop]; //null will be discarded
@@ -990,7 +1085,7 @@
         return result;
     }
 
-    async read(dbo, tableName, query,schema)  {
+    async read(dbo, tableName, query, limit, schema)  {
 
         
         if(!schema)
@@ -1001,7 +1096,10 @@
         if(!where.startsWith('WHERE '))
            throw {code:'PROVIDE_FILTER_CRITERIA',message: `Please provide valid filter criteria`}
     
-         let results = await dbo.sql(`SELECT ${this.makeSQLSelector(schema)} 
+
+        limit = (typeof limit === 'number')?` top ${limit} `:'';
+
+         let results = await dbo.sql(`SELECT ${limit}  ${this.makeSQLSelector(schema)} 
                     FROM ${this.schemaOwner}."${tableName}" 
                     ${where}
                     with (nolock)

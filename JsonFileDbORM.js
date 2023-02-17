@@ -56,6 +56,15 @@ module.exports = class JsonFileDbORM {
     if(this._schemaPath === this._dataPath)
        throw `Schema and Data folders should be seperated`     
 
+    this.validDateFormats = ['MM/DD/YYYY', 'MM/DD/YY', 'M/D/YYYY', 'M/D/YY', 'YYYY-MM-DD'];
+
+    this.validTimeFormats = ['HH:mm:ss','HH:mm','HHmm','HHmmss'];
+    
+    this.validDateTimeFormats = ['MM/DD/YYYY HH:mm:ss', 'MM/DD/YY HH:mm:ss', 'M/D/YYYY HH:mm:ss', 'M/D/YY HH:mm:ss', 'YYYY-MM-DD HH:mm:ss',
+                                    'MM/DD/YYYY HH:mm', 'MM/DD/YY HH:mm', 'M/D/YYYY HH:mm', 'M/D/YY HH:mm', 'YYYY-MM-DD HH:mm',
+                                    'MM/DD/YYYY HHmm', 'MM/DD/YY HHmm', 'M/D/YYYY HHmm', 'M/D/YY HHmm', 'YYYY-MM-DD HHmm',
+                                    'MM/DD/YYYY HHmmss', 'MM/DD/YY HHmmss', 'M/D/YYYY HHmmss', 'M/D/YY HHmmss', 'YYYY-MM-DD HHmmss'];
+
     //this._sequenceMap = require(`./schemas/sqlserver/${this.dbName.toLowerCase()}/tableSequenceMap.json`); //used by getTableSchema to automatically figure out ID fields
 
     if(jsonSpaces != null)
@@ -286,8 +295,8 @@ module.exports = class JsonFileDbORM {
           return `${fieldValue.format(fieldModel.format)}`;
         else if (fieldValue === "CURRENT_TIMESTAMP")
           return `${moment().format(fieldModel.format)}`;
-        else if (moment(fieldValue, fieldModel.format, false).isValid())
-          return `${moment(fieldValue).format(fieldModel.format)}`;
+        else if (moment(fieldValue, this.validDateFormats, false).isValid())
+          return `${moment(fieldValue, this.validDateFormats, false).format(fieldModel.format)}`;
         else return null;
         break;
       case "datetime":
@@ -304,10 +313,8 @@ module.exports = class JsonFileDbORM {
           return `${fieldValue}`;
         else if (fieldValue === "CURRENT_TIMESTAMP")
           return `${moment().format(fieldModel.format)}`;
-        else if (moment(fieldValue, fieldModel.format, false).isValid())
-          return `${moment(fieldValue, fieldModel.format).format(
-            fieldModel.format
-          )}`;
+        else if (moment(fieldValue, this.validDateTimeFormats, false).isValid())
+          return `${moment(fieldValue, this.validDateTimeFormats, false).format(fieldModel.format)}`;
         else return null;
 
         break;
@@ -320,10 +327,8 @@ module.exports = class JsonFileDbORM {
           return `${fieldValue.format(fieldModel.format)}`;
         else if (fieldValue === "CURRENT_TIMESTAMP")
           return `${moment().format(fieldModel.format)}`;
-        else if (moment(fieldValue, fieldModel.format, false).isValid())
-          return `${moment(fieldValue, fieldModel.format).format(
-            fieldModel.format
-          )}`;
+        else if (moment(fieldValue,this.validTimeFormats, false).isValid())
+          return `${moment(fieldValue,this.validTimeFormats, false).format(fieldModel.format)}`;
         else return null;
         break;
       case "integer":

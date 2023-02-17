@@ -42,6 +42,15 @@
         this._schemaPath =  schemaPath || `./schemas/progress/${this.dbName.toLowerCase()}/`
         if(!this._schemaPath.endsWith('/'))
             this._schemaPath += '/';
+
+        this.validDateFormats = ['MM/DD/YYYY', 'MM/DD/YY', 'M/D/YYYY', 'M/D/YY', 'YYYY-MM-DD'];
+
+        this.validTimeFormats = ['HH:mm:ss','HH:mm','HHmm','HHmmss'];
+        
+        this.validDateTimeFormats = ['MM/DD/YYYY HH:mm:ss', 'MM/DD/YY HH:mm:ss', 'M/D/YYYY HH:mm:ss', 'M/D/YY HH:mm:ss', 'YYYY-MM-DD HH:mm:ss',
+                                        'MM/DD/YYYY HH:mm', 'MM/DD/YY HH:mm', 'M/D/YYYY HH:mm', 'M/D/YY HH:mm', 'YYYY-MM-DD HH:mm',
+                                        'MM/DD/YYYY HHmm', 'MM/DD/YY HHmm', 'M/D/YYYY HHmm', 'M/D/YY HHmm', 'YYYY-MM-DD HHmm',
+                                        'MM/DD/YYYY HHmmss', 'MM/DD/YY HHmmss', 'M/D/YYYY HHmmss', 'M/D/YY HHmmss', 'YYYY-MM-DD HHmmss'];
             
         this._sequenceMap = require(`./schemas/progress/${this.dbName.toLowerCase()}/tableSequenceMap.json`); //used by getSchema utomatically figure out ID fields
 
@@ -319,8 +328,8 @@
                 else if(fieldValue === 'SYSTIMESTAMP')
                     return `${quote}${moment().format(fieldModel.format)}${quote}`
 
-                else if(moment(fieldValue, fieldModel.format, false).isValid())
-                    return  `${quote}${moment(fieldValue).format(fieldModel.format)}${quote}`
+                else if(moment(fieldValue,  this.validDateFormats, false).isValid())
+                    return  `${quote}${moment(fieldValue,  this.validDateFormats, false).format(fieldModel.format)}${quote}`
                 else    
                     return null; 
                 break;
@@ -340,8 +349,8 @@
                 else if(fieldValue === 'SYSTIMESTAMP')
                     return `${fieldValue}`  
                     
-                else if(moment(fieldValue, fieldModel.format, false).isValid())
-                    return  `${quote}${moment(fieldValue, fieldModel.format).format(fieldModel.format)}${quote}`
+                else if(moment(fieldValue, this.validDateTimeFormats, false).isValid())
+                    return  `${quote}${moment(fieldValue, this.validDateTimeFormats, false).format(fieldModel.format)}${quote}`
 
                 else    
                     return null;               
@@ -363,8 +372,8 @@
                 else if(fieldValue === 'SYSTIMESTAMP')
                     return `${quote}${moment().format(fieldModel.format)}${quote}`
 
-                else if(moment(fieldValue, fieldModel.format, false).isValid())
-                    return  `${quote}${moment(fieldValue, fieldModel.format).format(fieldModel.format)}${quote}`
+                else if(moment(fieldValue, this.validTimeFormats, false).isValid())
+                    return  `${quote}${moment(fieldValue, this.validTimeFormats, false).format(fieldModel.format)}${quote}`
 
                 else    
                     return null;  

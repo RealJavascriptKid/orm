@@ -130,7 +130,12 @@ module.exports = class SqlServerORM {
                         fieldsToDel.push(fieldName);
                         continue;
                     }
-                    table[fieldName] = override[fieldName];
+                   
+                    if(typeof override[fieldName] === 'string')
+                        override[fieldName] = {type:override[fieldName]}
+
+                    table[fieldName] = {...table[fieldName],...override[fieldName]};
+                    
                 }
 
                 for(let fieldName of fieldsToDel)
@@ -818,7 +823,7 @@ module.exports = class SqlServerORM {
                 if(Array.isArray(val)){
 
                     if(condition !== 'contains')
-                        throw `Invalid value specified in filter. You can only specify list when using 'contains' condition`
+                        throw `Invalid value specified in filter. You can only specify Array when using 'contains' condition`
 
                     let newVal = [];    
                     for(let i=0;i<val.length;i++){
@@ -847,8 +852,8 @@ module.exports = class SqlServerORM {
                     case 'lessOrEqual': whereSqlStr += ` "${prop}" <= ${val} `; break;
                     case 'startsWith': whereSqlStr += ` "${prop}" LIKE '${val.slice(1, -1)}%' `; break;
                     case 'endsWith': whereSqlStr += ` "${prop}" LIKE '%${val.slice(1, -1)}' `; break;
-                    case 'includes': whereSqlStr += ` "${prop}" LIKE '%${val.slice(1, -1)}%' `; break;
-                    case 'contains': whereSqlStr += ` "${prop}" IN (${val.join(',')}) `; break;
+                    case 'contains': whereSqlStr += ` "${prop}" LIKE '%${val.slice(1, -1)}%' `; break;
+                    case 'includes': whereSqlStr += ` "${prop}" IN (${val.join(',')}) `; break;
                     
                 }    
                 

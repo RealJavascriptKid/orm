@@ -929,8 +929,8 @@
     
                     if(Array.isArray(val)){
     
-                        if(condition !== 'contains')
-                            throw `Invalid value specified in filter. You can only specify list when using 'contains' condition`
+                        if(condition !== 'includes')
+                            throw `Invalid value specified in filter. You can only specify array when using 'includes' condition`
     
                         let newVal = [];    
                         for(let i=0;i<val.length;i++){

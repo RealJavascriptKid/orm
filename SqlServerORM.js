@@ -135,7 +135,7 @@ module.exports = class SqlServerORM {
                         override[fieldName] = {type:override[fieldName]}
 
                     table[fieldName] = {...table[fieldName],...override[fieldName]};
-                    
+
                 }
 
                 for(let fieldName of fieldsToDel)
@@ -822,8 +822,8 @@ module.exports = class SqlServerORM {
 
                 if(Array.isArray(val)){
 
-                    if(condition !== 'contains')
-                        throw `Invalid value specified in filter. You can only specify Array when using 'contains' condition`
+                    if(condition !== 'includes')
+                            throw `Invalid value specified in filter. You can only specify array when using 'includes' condition`
 
                     let newVal = [];    
                     for(let i=0;i<val.length;i++){

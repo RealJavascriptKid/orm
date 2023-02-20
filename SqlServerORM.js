@@ -78,6 +78,7 @@ module.exports = class SqlServerORM {
                                         when 'numeric' then 'decimal'
                                         else 'string' 
                                     end) as 'type' 
+                                    ,c.CHARACTER_MAXIMUM_LENGTH as 'width'
                                     ,TABLE_NAME as 'table'
                                     ,COLUMNPROPERTY(object_id(TABLE_SCHEMA+'.'+TABLE_NAME), COLUMN_NAME, 'IsIdentity') as 'IsID'
                                     FROM INFORMATION_SCHEMA.COLUMNS c 

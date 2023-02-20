@@ -82,7 +82,8 @@
                                         when 'logical' then 'boolean'
                                         else '} deliberately breaking'
                                     END) as 'type'
-                                    ,f."_file-name" as 'table'                   
+                                    ,f."_file-name" as 'table'  
+                                    ,fd."_Width" as 'width'                 
                                     FROM ${this.schemaOwner}."_field" fd 
                                     INNER JOIN ${this.schemaOwner}."_file" f ON fd."_file-recid" = f.ROWID 
                                     WHERE f."_Hidden" = 0 

@@ -864,10 +864,12 @@
             
             startswith:'startsWith',
             beginswith:'startsWith',
+            starts:'startsWith',
             sw:'startsWith',
             '%like':'startsWith',
 
-            endswith:'endsWith',                
+            endswith:'endsWith', 
+            ends:'endsWith',                 
             ew:'endsWith',
             'like%':'startsWith',
 
@@ -875,6 +877,7 @@
             has:'contains',
             '%like%':'contains',
 
+            includesIn:'includes',
             includes:'includes',
             in:'includes',
             

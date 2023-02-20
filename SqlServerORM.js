@@ -761,10 +761,12 @@ module.exports = class SqlServerORM {
             
             startswith:'startsWith',
             beginswith:'startsWith',
+            starts:'startsWith',
             sw:'startsWith',
             '%like':'startsWith',
 
-            endswith:'endsWith',                
+            endswith:'endsWith', 
+            ends:'endsWith',                 
             ew:'endsWith',
             'like%':'startsWith',
 
@@ -772,6 +774,7 @@ module.exports = class SqlServerORM {
             has:'contains',
             '%like%':'contains',
 
+            includesIn:'includes',
             includes:'includes',
             in:'includes',
             

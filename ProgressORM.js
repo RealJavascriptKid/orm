@@ -913,6 +913,8 @@
             let processField = (prop) => {
                 if(prop == 'NameValuePairs')
                     return;
+
+                let condition = 'equals';
                   
                 if(typeof fieldModel === 'string')
                     fieldModel = {type:fieldModel}    

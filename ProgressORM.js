@@ -900,7 +900,7 @@
     generateSimpleWhereClause(params,inputSchema){
 
             if(typeof params === 'string') //it means we are using costum where clause 
-                return params;
+                return params.replace('where ',' WHERE '); 
 
             if(typeof inputSchema === 'string')
                 inputSchema = this.getSchema(inputSchema)

@@ -797,7 +797,7 @@ module.exports = class SqlServerORM {
     generateSimpleWhereClause(params,schema){
 
             if(typeof params === 'string') //it means we are using costum where clause 
-                return params;
+                return params.replace('where ',' WHERE ');
 
             if(typeof schema === 'string')
                 schema = this.getSchema(schema)

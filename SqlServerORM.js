@@ -286,7 +286,7 @@ module.exports = class SqlServerORM {
         }
 
        
-        switch(fieldModel.type){
+        switch(fieldModel.type.trim()){
             case 'date':
                 fieldModel.format = fieldModel.format || this.dateFormat;
                 if(!fieldValue)
@@ -474,7 +474,7 @@ module.exports = class SqlServerORM {
            
            
             //convert nvp value
-            switch(fieldSchema.type){
+            switch(fieldSchema.type.trim()){
                 // case 'date':
 
                 //     break;

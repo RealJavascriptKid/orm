@@ -317,7 +317,7 @@
 
         let quote = putQuotes?`'`:``;
 
-        switch(fieldModel.type){
+        switch(fieldModel.type.trim()){
             case 'date':
                 fieldModel.format = fieldModel.format || this.dateFormat;
                 if(!fieldValue)
@@ -501,7 +501,7 @@
             if(typeof fieldValue == 'undefined')
                 continue;
 
-            switch(fieldSchema.type){
+            switch(fieldSchema.type.trim()){
                 // case 'date':
 
                 //     break;

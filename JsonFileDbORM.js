@@ -169,6 +169,10 @@ module.exports = class JsonFileDbORM {
 
   }
 
+  getAllSchema(){
+    return JSON.parse(JSON.stringify(this._schemas))   //we always should return the copy of schema so that it won't get mutated
+  }
+
   async _getSchema(schema) {
     if(schema === '_meta')
         throw `"_meta" is reserved key cannot use it has tableName`

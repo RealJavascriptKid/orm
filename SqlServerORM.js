@@ -164,6 +164,9 @@ module.exports = class SqlServerORM {
 
     }
        
+    getAllSchema(){
+        return JSON.parse(JSON.stringify(this._schemas))   //we always should return the copy of schema so that it won't get mutated
+    }
 
     getSchema(schema){
         if(!this._schemas[schema])

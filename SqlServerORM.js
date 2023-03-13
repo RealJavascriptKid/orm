@@ -861,13 +861,15 @@ class SqlServerORM {
             if (orderBys.length)
                 orderBy = ' ORDER BY ' + orderBys.join(',');
         }
-        return dbo.sql(`SELECT ${top} ${this.makeSQLSelector(schema,null,options.fields)} 
+        let result = await dbo.sql(`SELECT ${top} ${this.makeSQLSelector(schema,null,options.fields)} 
                        FROM ${this.schemaOwner}."${tableName}" with (nolock)
                        ${where}
-                        ${orderBy}
-                        ${offset}
-                        ${limit}
-                       `);
+                        ${orderBy} ${offset} ${limit}`);
+
+        if(typeof options.flatBy === 'string' && result.length && result[0][options.flatBy])
+             result = result.map(item => item[options.flatBy])  //flatten the result
+
+        return result;                
     }
     
     /** @returns {Promise<any>} */

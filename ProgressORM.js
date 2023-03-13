@@ -973,9 +973,17 @@ class ProgressORM {
                     ${limit}
                     with (nolock)
                     `);
-        if (results.length && results[0].NameValuePairs) { //unfortunately we have to do this for Progress ONLY so that we can get these namevaluepairs fields addressed
+        if (results.length && results[0].NameValuePairs || typeof options.flatBy === 'string') { //unfortunately we have to do this for Progress ONLY so that we can get these namevaluepairs fields addressed
+            
+                     
             results.map(result => {
-                result = this.normalizeNVPFields(result, schema);
+
+                if(result.NameValuePairs)
+                    result = this.normalizeNVPFields(result, schema);
+                
+                if(options.flatBy && result[options.flatBy])
+                    return result[options.flatBy]
+                
                 return result;
             });
         }

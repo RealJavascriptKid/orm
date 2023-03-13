@@ -755,7 +755,16 @@ class ProgressORM {
             includes: 'includes',
             in: 'includes',
         };
+
         let condition, value = null;
+        
+        if(Array.isArray(obj)){
+            return {
+                 value: obj,
+                 condition: 'includes'
+            }
+         }
+
         for (condition in obj) {
             value = obj[condition];
             break;
@@ -782,7 +791,7 @@ class ProgressORM {
             let condition = 'equals';
             if (typeof fieldModel === 'string')
                 fieldModel = { type: fieldModel };
-            if (typeof val === 'object' && !Array.isArray(val)) {
+            if (typeof val === 'object') {
                 let result = this._getConditionAndValue(val);
                 val = result.value;
                 obj[prop] = val;

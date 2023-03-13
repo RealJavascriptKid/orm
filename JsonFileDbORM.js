@@ -1,5 +1,5 @@
 
-module.exports = class JsonFileDbORM {
+class JsonFileDbORM {
   constructor(opts) {
     this._schemas = {};
     this._schemaPath = null;
@@ -1018,3 +1018,5 @@ module.exports = class JsonFileDbORM {
   }
 
 };
+
+module.exports = JsonFileDbORM

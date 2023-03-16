@@ -751,7 +751,7 @@ class ProgressORM {
             contains: 'contains',
             has: 'contains',
             '%like%': 'contains',
-            includesIn: 'includes',
+            includesin: 'includes',
             includes: 'includes',
             in: 'includes',
         };

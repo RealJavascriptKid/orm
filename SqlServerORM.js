@@ -2,54 +2,7 @@
 
 /** */
 class SqlServerORM {
-    
-    /** @public */
-    _schemas = undefined;
-    
-    /** @public */
-    _schemaPath = undefined;
-    
-    /** @public */
-    _sequenceMap = undefined;
-    
-    /** @public */
-    _overrideSchemaStrict = undefined;
-    
-    /** @public */
-    _fixNVP = undefined;
-    
-    /** @public */
-    schemaOwner = undefined;
-    
-    /** @public */
-    dbName = undefined;
-    
-    /** @public */
-    type = undefined;
-    
-    /** @public */
-    schemaOptions = undefined;
-    
-    /** @public */
-    moment = undefined;
-    
-    /** @public */
-    dateFormat = undefined;
-    
-    /** @public */
-    dateTimeFormat = undefined;
-    
-    /** @public */
-    timeFormat = undefined;
-    
-    /** @public */
-    validDateFormats = undefined;
-    
-    /** @public */
-    validTimeFormats = undefined;
-    
-    /** @public */
-    validDateTimeFormats = undefined;
+        
 
     /** @returns {Promise<SqlServerORM>} */
     constructor(opts) {

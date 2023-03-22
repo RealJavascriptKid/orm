@@ -160,28 +160,36 @@ class SqlServerORM {
         return `${dat} ${time}`;
     }
     
-    /** @returns {any} */
-    escape(str) {
-        let strMagic = function (s) {
-            if (s == 'null' || s == 'undefined')
-                s = '';
-            s = s.replace(/'/g, "''");
-            return s;
-        };
-        if (typeof str === 'object') {
-            for (let prop in str) {
-                if (typeof str[prop] === 'string')
-                    str[prop] = strMagic(str[prop]); //removing quotes
-                else if (typeof str[prop] === 'undefined' || str[prop] === null)
-                    str[prop] = '';
-            }
-            return str;
-        }
-        else if (typeof str === 'string')
-            return strMagic(str); //removing quotes
-        else if (typeof str === 'undefined' || str === null)
-            str = '';
-        return str;
+    /**
+	 * Takes a given Input and mutates it to be valid in a given SQL statement.  
+	 * String ' are escaped to ''.  
+	 * Objects are recursed over to escape them fully (this mutates the object).  
+	 * null and undefined as coalesced into the empty string "".  
+	 * Non problematic types are passed though without inspection.  
+	 * @param {any} Input The Input to be escaped
+	 * @returns {any} The Input not valid in a SQL statement
+	 * */
+    escape(Input) {
+		if (Input === undefined || Input === null) {
+			return '';
+		}
+
+		if (typeof Input == 'string') {
+			if (Input.toLowerCase() == 'undefined' || Input.toLowerCase() == 'null') {
+				return '';
+			}
+
+			return Input.replace(/'/, "''");
+		}
+
+		if (typeof Input == 'object') {
+			for (let prop in Input) {
+				Input[prop] = this.escape(Input[prop])
+			}
+			return Input;
+		}
+
+		return Input;
     }
     
     /** @returns {string | number} */

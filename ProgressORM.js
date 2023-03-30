@@ -100,7 +100,7 @@ class ProgressORM {
                     item = { field: item.field, type: 'datetime', defaultValueOnInsert: 'SYSTIMESTAMP', defaultValueOnUpdate: 'SYSTIMESTAMP', preventSelection: true };
                     break;
                 case 'PlantId':
-                    item = { field: item.field, type: 'integer', defaultValueOnInsert: this.schemaOptions.plantid };
+                    item = { field: item.field, type: 'integer',defaultValueOnInsert:0, alternatives:['PlantID','plantID','plantid','PLANTID'] };
                     break;
             }
             table[item.field] = item;

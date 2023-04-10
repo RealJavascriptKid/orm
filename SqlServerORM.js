@@ -112,6 +112,13 @@ class SqlServerORM {
                     if (typeof override[fieldName] === 'string')
                         override[fieldName] = { type: override[fieldName] };
                     table[fieldName] = { ...table[fieldName], ...override[fieldName] };
+                    
+                    if(table[fieldName].alias){ //if there is any alias then make it alternatives
+                        if(!Array.isArray(table[fieldName].alternatives))
+                            table[fieldName].alternatives = [];  
+
+                        table[fieldName].alternatives.push(table[fieldName].alias)
+                    }
                 }
                 for (let fieldName of fieldsToDel)
                     delete override[fieldName];
@@ -587,7 +594,8 @@ class SqlServerORM {
                 selectedFields = Object.keys(schema)
         
         for (let fieldName of selectedFields) {
-            let type = schema[fieldName];
+            let type = schema[fieldName],
+                fieldAlias = fieldName;
             
             if(type == null)  //it means field is not in schema
                 continue;
@@ -595,20 +603,24 @@ class SqlServerORM {
             if (typeof type === 'object') {
                 if (type.preventSelection) //means our schema has defined that we don't want this field to apear in select clause
                     continue;
+
+                if(type.alias != null)
+                    fieldAlias = type.alias; 
+                    
                 type = type.type;
             }
             switch (type) {
                 case 'date':
-                    fieldName = `convert(varchar, ${prefix}"${fieldName}", 23) as '${fieldName}'`;
+                    fieldName = `convert(varchar, ${prefix}"${fieldName}", 23) as '${fieldAlias}'`;
                     break;
                 case 'datetime':
-                    fieldName = `convert(varchar, ${prefix}"${fieldName}", 121) as '${fieldName}'`;
+                    fieldName = `convert(varchar, ${prefix}"${fieldName}", 121) as '${fieldAlias}'`;
                     break;
                 case 'string':
-                    fieldName = `ISNULL(${prefix}"${fieldName}",'') as '${fieldName}'`;
+                    fieldName = `ISNULL(${prefix}"${fieldName}",'') as '${fieldAlias}'`;
                     break;
                 default:
-                    fieldName = `${prefix}"${fieldName}"`;
+                    fieldName = `${prefix}"${fieldName}" as '${fieldAlias}'`;
                     break;
             }
             fields.push(fieldName);

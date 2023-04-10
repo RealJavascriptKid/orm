@@ -125,6 +125,13 @@ class ProgressORM {
                     if (typeof override[fieldName] === 'string')
                         override[fieldName] = { type: override[fieldName] };
                     table[fieldName] = { ...table[fieldName], ...override[fieldName] };
+
+                    if(table[fieldName].alias){ //if there is any alias then make it alternatives
+                        if(!Array.isArray(table[fieldName].alternatives))
+                            table[fieldName].alternatives = [];  
+
+                        table[fieldName].alternatives.push(table[fieldName].alias)
+                    }
                 }
                 for (let fieldName of fieldsToDel)
                     delete override[fieldName];
@@ -650,7 +657,8 @@ class ProgressORM {
                 }
                 continue;
             }
-            let type = schema[fieldName];
+            let type = schema[fieldName],
+                fieldAlias = fieldName;
 
             if(type == null)  //it means field is not in schema
                 continue;
@@ -658,16 +666,20 @@ class ProgressORM {
             if (typeof type === 'object') {
                 if (type.preventSelection) //means our schema has defined that we don't want this field to apear in select clause
                     continue;
+
+                if(type.alias != null)
+                    fieldAlias = type.alias;     
+
                 type = type.type;
             }
             switch (type) {
                 // case 'date': fieldName = `convert(varchar, ${prefix}"${fieldName}", 23) as '${fieldName}'`; break;
                 // case 'datetime': fieldName = `convert(varchar, ${prefix}"${fieldName}", 121) as '${fieldName}'`; break;
                 case 'string':
-                    fieldName = `IFNULL(${prefix}"${fieldName}",'') as '${fieldName}'`;
+                    fieldName = `IFNULL(${prefix}"${fieldName}",'') as '${fieldAlias}'`;
                     break;
                 default:
-                    fieldName = `${prefix}"${fieldName}"`;
+                    fieldName = `${prefix}"${fieldName}" as '${fieldAlias}'`;
                     break;
             }
             fields.push(fieldName);

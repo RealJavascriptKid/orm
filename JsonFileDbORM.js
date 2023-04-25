@@ -115,7 +115,12 @@ class JsonFileDbORM {
      
     let schema  = await this._readFile(path.join(this._schemaPath, `${tableName}.json`));
    
-    let tableData = await this._readFile(path.join(this._dataPath, `${tableName}.json`));
+    let tableData = [];
+    try{
+      await this._readFile(path.join(this._dataPath, `${tableName}.json`));
+    }catch(ex){
+       tableData = [];
+    }
 
     if(schema){
       
@@ -1016,6 +1021,71 @@ class JsonFileDbORM {
       return schema;
 
   }
+
+  async addSchema(tableName,schema){
+      const path = require('path')
+
+      let dataExists = false,oldSchema,isNewSchema = false;
+      try{
+
+        oldSchema = await this._getSchema(tableName);  
+        let data = await this._read(tableName,{},1,oldSchema)
+        if(data.length)  //if there is data then don't set schema
+          dataExists = true;       
+
+      }catch(ex){
+        oldSchema = {}
+        isNewSchema = true;
+      }
+      
+      if(isNewSchema){
+
+        schema = {...oldSchema,...schema};
+      
+        await this._writeFile(path.join(this._schemaPath, `${tableName}.json`),schema)
+
+        await this._getSchema(tableName);  
+      }
+      
+  }
+
+  async removeSchema(tableName){
+      const path = require('path')
+
+      if(!this._schemas[tableName])
+          return;
+       
+      delete this._schemas[tableName];
+
+      delete this._storage[tableName];
+
+      this.rm(path.join(this._schemaPath, `${tableName}.json`)) //deleting schema
+
+      this.rm(path.join(this._dataPath, `${tableName}.json`)) //deleting data
+      
+  }
+
+  rm(directoryPath) {
+    var self = this;
+    const fs = require('fs'),
+        path = require('path');
+
+    if (fs.existsSync(directoryPath)) {
+        fs.readdirSync(directoryPath).forEach((file, index) => {
+            const curPath = path.join(directoryPath, file);
+            if (fs.lstatSync(curPath).isDirectory()) {
+                // recurse
+                self.rm(curPath);
+            } else {
+                // delete file
+                fs.unlinkSync(curPath);
+            }
+        });
+        fs.rmdirSync(directoryPath);
+    }
+  }
+
+  
 
 };
 

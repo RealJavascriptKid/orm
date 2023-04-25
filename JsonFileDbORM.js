@@ -115,12 +115,7 @@ class JsonFileDbORM {
      
     let schema  = await this._readFile(path.join(this._schemaPath, `${tableName}.json`));
    
-    let tableData = [];
-    try{
-      await this._readFile(path.join(this._dataPath, `${tableName}.json`));
-    }catch(ex){
-       tableData = [];
-    }
+    let tableData = await this._readFile(path.join(this._dataPath, `${tableName}.json`),'{}');
 
     if(schema){
       
@@ -319,8 +314,6 @@ class JsonFileDbORM {
           fieldValue === "getdate()" ||
           fieldValue === "CURRENT_TIMESTAMP"
         )
-          return `${fieldValue}`;
-        else if (fieldValue === "CURRENT_TIMESTAMP")
           return `${moment().format(fieldModel.format)}`;
         else if (moment(fieldValue, this.validDateTimeFormats, false).isValid())
           return `${moment(fieldValue, this.validDateTimeFormats, false).format(fieldModel.format)}`;
@@ -986,14 +979,40 @@ class JsonFileDbORM {
       })  
   }
 
-  async _readFile(file) {
-    const fs = require('fs')
-    return new Promise((res,rej) => {
+  async _readFile(file,defaultFileData) {
+    const fs = require('fs'),
+         path = require('path');
+
+    let _read = () => {
+      return new Promise((res,rej) => {
         fs.readFile(file, (err,fileData) => {
-            if (err) return rej(err);            
+            if (err) return rej(err); 
             res(JSON.parse(fileData.toString()));
         });
     })  
+    }
+
+    let _ensure = async (filePath) => {
+      var dirname = path.dirname(filePath);
+      if (fs.existsSync(dirname)) {       
+        return true;        
+      }
+      await _ensure(dirname);
+      fs.mkdirSync(dirname);
+    }
+
+    try{
+       let result = await _read();
+       return result;
+    }catch(ex){
+        await _ensure(file);
+        if(defaultFileData){
+          await this._writeFile(file,JSON.parse(defaultFileData))
+       }
+        return _read()
+    }
+
+   
 }
 
   async commit() {
@@ -1054,14 +1073,12 @@ class JsonFileDbORM {
 
       if(!this._schemas[tableName])
           return;
+
+      this.removeAll(tableName)
        
       delete this._schemas[tableName];
 
-      delete this._storage[tableName];
-
       this.rm(path.join(this._schemaPath, `${tableName}.json`)) //deleting schema
-
-      this.rm(path.join(this._dataPath, `${tableName}.json`)) //deleting data
       
   }
 

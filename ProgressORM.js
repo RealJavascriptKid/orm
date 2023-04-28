@@ -889,31 +889,35 @@ class ProgressORM {
     }
     
     /** @returns {Promise<any>} */
-    async readOne(dbo, tableName, query,options, schema) {
+    async readOne(dbo, tableName, query, options = {}) {
+        
+        let {schema} = options;
+
         if (!schema)
             schema = this.getSchema(tableName);
         let where = this.generateSimpleWhereClause(query, schema);
         if (!where.startsWith('WHERE '))
             throw { code: 'PROVIDE_FILTER_CRITERIA', message: `Please provide valid filter criteria` };
 
-        if (typeof options !== 'object' && !Array.isArray(options))
-            options = {};
         let result = await this.read(dbo, tableName, query,{
             ...options,
             limit:1
-        }, schema)
+        })
         return (result.length) ? result[0] : null;
     }
     
     /** @returns {Promise<any>} */
-    async read(dbo, tableName, query, options, schema) {
+    async read(dbo, tableName, query, options = {}) {
+        
+        let {schema} = options;
+
         if (!schema)
             schema = await this.getSchema(tableName);
         let where = this.generateSimpleWhereClause(query, schema);
         if (!where.startsWith('WHERE '))
             throw { code: 'PROVIDE_FILTER_CRITERIA', message: `Please provide valid filter criteria` };
-        if (typeof options !== 'object' && !Array.isArray(options))
-            options = {};
+        
+
         options.limit = options.limit || options.take || null;
         options.offset = options.offset || options.skip || null;
         options.sort = options.sort || null;
@@ -942,6 +946,7 @@ class ProgressORM {
             if (orderBys.length)
                 orderBy = ' ORDER BY ' + orderBys.join(',');
         }
+
         let results = await dbo.sql(`SELECT ${top}  ${this.makeSQLSelector(schema,null,options.fields)} 
                     FROM ${this.schemaOwner}."${tableName}" 
                     ${where}
@@ -968,25 +973,39 @@ class ProgressORM {
     }
     
     /** @returns {Promise<any>} */
-    async insert(dbo, tableName, params, schema) {
+    async insert(dbo, tableName, params, options = {}) {
+        
+        let {schema,returnResult} = options;
+
         if (!schema)
             schema = await this.getSchema(tableName);
         let arr = (Array.isArray(params)) ? params : [params];
         //I can use Promise.all() but for now I'm keeping it one at time since this is PROGRESS ORM  so 
         //we don't necessarily want to consume all db agents
-        let results = [];
+        
         for (let row of arr) {
             let data = this.generateInsertQueryDataHelper(row, schema);
-            let result = await dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${data.fields})  VALUES(${data.values})`);
-            results.push(result);
+            await dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${data.fields})  VALUES(${data.values})`);            
         }
-        if (results.length === 1)
-            return results[0];
-        return results;
+
+        if(returnResult){
+            let results = [];
+            for(let row of arr){
+                let result = await this.readOne(dbo,tableName,row)
+                results.push(result)
+            }
+            if(results.length === 1)
+                return results[0];
+            return results;
+        }
+        
     }
     
     /** @returns {Promise<any>} */
-    async update(dbo, tableName, params, query, schema) {
+    async update(dbo, tableName, params, query, options = {}) {
+        
+        let {schema,returnResult} = options;
+
         if (!schema)
             schema = await this.getSchema(tableName);
         let where = this.generateSimpleWhereClause(query, schema);
@@ -995,15 +1014,22 @@ class ProgressORM {
         //archiving previous     
         //await dbo.sql(`INSERT INTO dbo."${tableName}_History" select * from dbo."${tableName}_History" ${where} `)
         let updateSqlStr = this.generateUpdateQueryDataHelper(params, schema);
-        return dbo.sql(`UPDATE ${this.schemaOwner}."${tableName}" 
+        await dbo.sql(`UPDATE ${this.schemaOwner}."${tableName}" 
                SET                 
                ${updateSqlStr}
                ${where} 
                `);
+
+        if(returnResult)
+             return this.read(dbo,tableName,where,options)
+
     }
     
     /** @returns {Promise<any>} */
-    async remove(dbo, tableName, query, schema) {
+    async remove(dbo, tableName, query, options = {}) {
+
+        let {schema} = options;
+
         if (!schema)
             schema = await this.getSchema(tableName);
         let where = this.generateSimpleWhereClause(query, schema);

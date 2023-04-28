@@ -780,17 +780,19 @@ class JsonFileDbORM {
   }
 
   async readOne(tableName, query) {    
-    let result = await this.read(tableName,query,1);
+    let result = await this.read(tableName,query,{limit:1});
     return result.length ? result[0] : null;
   }
 
-  async read(tableName, query,limit) { 
-    let schema = await this._getSchema(tableName);  
-    let data = await this._read(tableName,query,limit,schema)
+  async read(tableName, query,options = {}) { 
+    options.schema = await this._getSchema(tableName); 
+    let data = await this._read(tableName,query,options)
     return this._cloneResult(data) //we don't want internal data to be mutated by external code
   }
 
-  async _read(tableName,query,limit,schema){
+  async _read(tableName,query,options){
+
+    let {limit,schema} = options;
 
     if(typeof query !== 'object'){  //if query is NOT object then we assume it to be ID field
         let val = query;
@@ -836,11 +838,12 @@ class JsonFileDbORM {
         return this._cloneResult(recordsAdded); //we don't want external progam to mutate our data
   }
 
-  async update(tableName, params, query,limit) {
+  async update(tableName, params, query,options = {}) {
 
     let schema = await this._getSchema(tableName);
+    options.schema = schema;
 
-    let dataToUpdate = await this._read(tableName,query,limit,schema);
+    let dataToUpdate = await this._read(tableName,query,options);
 
     let updates = this._updateProcess(params, schema);
 
@@ -873,11 +876,12 @@ class JsonFileDbORM {
    
   }
 
-  async remove(tableName, query, limit) {
-
+  async remove(tableName, query, options = {}) {
+        
     let schema = await this._getSchema(tableName);
+    options.schema = schema;
 
-    let dataToDelete = await this._read(tableName,query,limit,schema);
+    let dataToDelete = await this._read(tableName,query,options);
 
        //TODO address indexes while updateing
     for(let row of dataToDelete){

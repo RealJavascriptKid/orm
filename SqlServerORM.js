@@ -59,7 +59,9 @@ class SqlServerORM {
                                         when 'nvarchar' then 'string'
                                         when 'date' then 'date'
                                         when 'datetime' then 'datetime'
+										when 'datetime2' then 'datetime'
                                         when 'datetimeoffset' then 'datetime'
+										when 'time' then 'time'
                                         when 'int' then 'integer'
                                         when 'bigint' then 'integer'
                                         when 'numeric' then 'decimal'
@@ -611,10 +613,13 @@ class SqlServerORM {
             }
             switch (type) {
                 case 'date':
-                    fieldName = `convert(varchar, ${prefix}"${fieldName}", 23) as '${fieldAlias}'`;
+                    fieldName = `ISNULL(convert(varchar, ${prefix}"${fieldName}", 23),'') as '${fieldAlias}'`;
                     break;
                 case 'datetime':
-                    fieldName = `convert(varchar, ${prefix}"${fieldName}", 121) as '${fieldAlias}'`;
+                    fieldName = `ISNULL(convert(varchar, ${prefix}"${fieldName}", 121),'') as '${fieldAlias}'`;
+                    break;
+                case 'time':
+                    fieldName = `ISNULL(convert(varchar, ${prefix}"${fieldName}", 108),'') as '${fieldAlias}'`;
                     break;
                 case 'string':
                     fieldName = `ISNULL(${prefix}"${fieldName}",'') as '${fieldAlias}'`;
@@ -791,31 +796,35 @@ class SqlServerORM {
     }
     
     /** @returns {Promise<any>} */
-    async readOne(dbo, tableName, query,options, schema) {
+    async readOne(dbo, tableName, query,options = {}) {
+
+        let {schema} = options;
+
         if (!schema)
             schema = this.getSchema(tableName);
         let where = this.generateSimpleWhereClause(query, schema);
         if (!where.startsWith('WHERE '))
             throw { code: 'PROVIDE_FILTER_CRITERIA', message: `Please provide valid filter criteria` };
-
-        if (typeof options !== 'object' && !Array.isArray(options))
-            options = {};
+       
         let result = await this.read(dbo, tableName, query,{
             ...options,
             limit:1
-        }, schema)
+        })
         return (result.length) ? result[0] : null;
     }
     
     /** @returns {Promise<any>} */
-    async read(dbo, tableName, query, options, schema) {
+    async read(dbo, tableName, query, options = {}) {
+
+        let {schema} = options;
+
         if (!schema)
             schema = this.getSchema(tableName);
+
         let where = this.generateSimpleWhereClause(query, schema);
         if (!where.startsWith('WHERE '))
             throw { code: 'PROVIDE_FILTER_CRITERIA', message: `Please provide valid filter criteria` };
-        if (typeof options !== 'object' && !Array.isArray(options))
-            options = {};
+        
         options.limit = options.limit || options.take || null;
         options.offset = options.offset || options.skip || null;
         options.sort = options.sort || null;
@@ -857,7 +866,10 @@ class SqlServerORM {
     }
     
     /** @returns {Promise<any>} */
-    async insert(dbo, tableName, params, schema) {
+    async insert(dbo, tableName, params, options = {}) {
+        
+        let {schema,returnResult} = options;
+
         if (!schema)
             schema = this.getSchema(tableName);
         let data;
@@ -869,14 +881,31 @@ class SqlServerORM {
                     fields = data.fields;
                 values.push(`(${data.values})`);
             }
-            return dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${fields}) VALUES ${values.join(',')}`);
+            await dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${fields}) VALUES ${values.join(',')}`);
+            let results = [];
+            if(returnResult){               
+                for(let row of params){
+                    let result = await this.readOne(dbo,tableName,row)
+                    results.push(result);
+                }
+            }
+            return results; 
         }
         data = this.generateInsertQueryDataHelper(params, schema);
-        return dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${data.fields})  VALUES(${data.values})`);
+        await dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${data.fields})  VALUES(${data.values})`);
+
+        if(returnResult){
+            return this.readOne(dbo, tableName,params)
+        }
+            
+
     }
     
     /** @returns {Promise<any>} */
-    async update(dbo, tableName, params, query, schema) {
+    async update(dbo, tableName, params, query,options = {}) {
+        
+        let {schema,returnResult} = options;
+
         if (!schema)
             schema = this.getSchema(tableName);
         let where = this.generateSimpleWhereClause(query, schema);
@@ -885,15 +914,21 @@ class SqlServerORM {
         //archiving previous     
         //await dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}_History" select * from ${this.schemaOwner}."${tableName}_History" ${where} `)
         let updateSqlStr = this.generateUpdateQueryDataHelper(params, schema);
-        return dbo.sql(`UPDATE ${this.schemaOwner}."${tableName}" 
+        await dbo.sql(`UPDATE ${this.schemaOwner}."${tableName}" 
                SET                 
                ${updateSqlStr}
                ${where} 
                `);
+
+        if(returnResult)
+            return this.read(dbo,tableName,where,options)
     }
     
     /** @returns {Promise<any>} */
-    async remove(dbo, tableName, query, schema) {
+    async remove(dbo, tableName, query, options = {}) {
+        
+        let {schema} = options;
+
         if (!schema)
             schema = this.getSchema(tableName);
         let where = this.generateSimpleWhereClause(query, schema);

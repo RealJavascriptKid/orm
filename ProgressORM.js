@@ -9,6 +9,7 @@ class ProgressORM {
     /** @returns {Promise<ProgressORM>} */
     constructor(opts) {
         this._schemas = null;
+        this._schemasLowerCasedMap = {}
         this._schemaPath = null;
         this._sequenceMap = null;
         this._overrideSchemaStrict = null;
@@ -82,8 +83,15 @@ class ProgressORM {
             let table = this._schemas[item.table];
             if (!table)
                 table = this._schemas[item.table] = {};
+
+            this._schemasLowerCasedMap[item.table.toLowerCase()] = item.table; //need this so that schema name is case insensitive
+
             if (item.ArrayExtent > 0) //we are NOT handling array type fields
+                continue;                
+
+            if (['TimeFrame', 'RecordSeq','PROGRESS_RECID','PROGRESS_RECID_IDENT_'].includes(item.field))
                 continue;
+
             let seqName = this._getSequenceNameForID(item.table, item);
             if (seqName) {
                 item.preventUpdate = true;
@@ -168,9 +176,10 @@ class ProgressORM {
     
     /** @returns {any} */
     getSchema(schema) {
-        if (!this._schemas[schema])
+        let schemaName = this._schemasLowerCasedMap[schema.toLowerCase()]
+        if (!this._schemas[schemaName])
             throw `Unable to find schema for ${schema}`;
-        return JSON.parse(JSON.stringify(this._schemas[schema])); //we always should return the copy of schema so that it won't get mutated
+        return JSON.parse(JSON.stringify(this._schemas[schemaName])); //we always should return the copy of schema so that it won't get mutated
     }
     
     /** @returns {string} */

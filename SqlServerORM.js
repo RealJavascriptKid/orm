@@ -35,6 +35,7 @@ class SqlServerORM {
         this.timeFormat = timeFormat || 'HH:mm:ss';
         this._overrideSchemaStrict = overrideSchemaStrict || false; //if true then after schema is overriden then it will REMOVE fields that are NOT overridden
         this._schemas = {};
+        this._schemasLowerCasedMap = {}
         this._schemaPath = schemaPath || `./schemas/sqlserver/${this.dbName.toLowerCase()}/`;
         if (!this._schemaPath.endsWith('/'))
             this._schemaPath += '/';
@@ -76,7 +77,10 @@ class SqlServerORM {
             let table = this._schemas[item.table];
             if (!table)
                 table = this._schemas[item.table] = {};
-            if (['TimeFrame', 'RecordSeq'].includes(item.field))
+            
+            this._schemasLowerCasedMap[item.table.toLowerCase()] = item.table; //need this so that schema name is case insensitive
+            
+            if (['TimeFrame', 'RecordSeq','PROGRESS_RECID','PROGRESS_RECID_IDENT_'].includes(item.field))
                 continue;
             if (item.IsID) {
                 item.preventUpdate = true;
@@ -145,9 +149,12 @@ class SqlServerORM {
     
     /** @returns {any} */
     getSchema(schema) {
-        if (!this._schemas[schema])
+        if(schema.includes('-'))
+            schema = schema.replaceAll('-','_')
+        let schemaName = this._schemasLowerCasedMap[schema.toLowerCase()]
+        if (!this._schemas[schemaName])
             throw `Unable to find schema for ${schema}`;
-        return JSON.parse(JSON.stringify(this._schemas[schema])); //we always should return the copy of schema so that it won't get mutated
+        return JSON.parse(JSON.stringify(this._schemas[schemaName])); //we always should return the copy of schema so that it won't get mutated
     }
     
     /** @returns {string} */

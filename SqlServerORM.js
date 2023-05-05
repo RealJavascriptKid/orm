@@ -15,17 +15,24 @@ class SqlServerORM {
     }
     
     /** @returns {Promise<SqlServerORM>} */
-    async _init({ dbName, dbo, //needed for schema gathering
-    schemaOwner, schemaPath, dateFormat, dateTimeFormat, timeFormat, overrideSchemaStrict, schemaOptions, fixNVPs //CFS NVP fields
+    async _init({ dbName, dbo, //needed for schema gathering    
+    schemaOwner, schemaPath, dateFormat, dateTimeFormat, timeFormat, overrideSchemaStrict, schemaOptions, fixNVPs, //CFS NVP fields
+    isProgressDataServer
      }) {
+        const path = require('path')
+
         if (!dbo || typeof dbo !== 'object')
             throw `"dbo" must be provided. It is needed to get schema`;
-        if (!dbName)
-            throw `"dbName" must be provided`;
+       
         this._fixNVP = fixNVPs || false; //if true then when inserting or updating if there is NameValuePairs field and there is corresponding field in schema it will remove it from NVP and put it in real field           
         this.schemaOwner = schemaOwner || 'dbo';
-        this.dbName = dbName;
+        this.dbName = dbName || dbo.database;
+
+        if (!this.dbName)
+            throw `"dbName" must be provided`;
+
         this.type = 'sqlserver';
+        this.isProgressDataServer = isProgressDataServer || false;
         this.schemaOptions = schemaOptions || {
             plantid: 0
         };
@@ -35,17 +42,21 @@ class SqlServerORM {
         this.timeFormat = timeFormat || 'HH:mm:ss';
         this._overrideSchemaStrict = overrideSchemaStrict || false; //if true then after schema is overriden then it will REMOVE fields that are NOT overridden
         this._schemas = {};
-        this._schemasLowerCasedMap = {}
         this._schemaPath = schemaPath || `./schemas/sqlserver/${this.dbName.toLowerCase()}/`;
         if (!this._schemaPath.endsWith('/'))
             this._schemaPath += '/';
+
+        this._schemaPath = path.resolve(this._schemaPath)
+
+        this._sequenceMap = {}
+
         this.validDateFormats = ['MM/DD/YYYY', 'MM/DD/YY', 'M/D/YYYY', 'M/D/YY', 'YYYY-MM-DD'];
         this.validTimeFormats = ['HH:mm:ss', 'HH:mm', 'HHmm', 'HHmmss'];
         this.validDateTimeFormats = ['MM/DD/YYYY HH:mm:ss', 'MM/DD/YY HH:mm:ss', 'M/D/YYYY HH:mm:ss', 'M/D/YY HH:mm:ss', 'YYYY-MM-DD HH:mm:ss',
             'MM/DD/YYYY HH:mm', 'MM/DD/YY HH:mm', 'M/D/YYYY HH:mm', 'M/D/YY HH:mm', 'YYYY-MM-DD HH:mm',
             'MM/DD/YYYY HHmm', 'MM/DD/YY HHmm', 'M/D/YYYY HHmm', 'M/D/YY HHmm', 'YYYY-MM-DD HHmm',
             'MM/DD/YYYY HHmmss', 'MM/DD/YY HHmmss', 'M/D/YYYY HHmmss', 'M/D/YY HHmmss', 'YYYY-MM-DD HHmmss'];
-        //this._sequenceMap = require(`./schemas/sqlserver/${this.dbName.toLowerCase()}/tableSequenceMap.json`); //used by getTableSchema to automatically figure out ID fields
+        this._sequenceMap = this._copy(require(`./schemas/sqlserver/${this.dbName.toLowerCase()}/tableSequenceMap.json`)); //used by getSchema utomatically figure out ID fields        
         await this._populateSchema(dbo);
         return this;
     }
@@ -74,17 +85,34 @@ class SqlServerORM {
                                     FROM INFORMATION_SCHEMA.COLUMNS c 
                                     order by TABLE_NAME`);
         for (let item of allFields) {
-            let table = this._schemas[item.table];
+
+            let table = this._schemas[item.table.toLowerCase()];
             if (!table)
-                table = this._schemas[item.table] = {};
-            
-            this._schemasLowerCasedMap[item.table.toLowerCase()] = item.table; //need this so that schema name is case insensitive
-            
+                table = this._schemas[item.table.toLowerCase()] = {};
+
+            if(typeof table._meta !== 'object') 
+                table._meta  = {}
+
             if (['TimeFrame', 'RecordSeq','PROGRESS_RECID','PROGRESS_RECID_IDENT_'].includes(item.field))
                 continue;
+
+            if(this.isProgressDataServer && !table._meta.progressDataServerIDSequence){
+
+                let seqName = this._getSequenceNameForID(item.table, item);
+                if (seqName) {
+                    item.IsID = true;
+                    table._meta.progressDataServerIDSequence = seqName                     
+                }
+            } 
+            
             if (item.IsID) {
-                item.preventUpdate = true;
-                item.preventInsert = true;
+
+                if(!table._meta.progressDataServerIDSequence)
+                    item.preventInsert = true;
+
+                item.preventUpdate = true;                
+
+                table._meta.idField = item.field.toLowerCase()
             }
             switch (item.field) {
                 case 'CreateDateTime':
@@ -98,25 +126,77 @@ class SqlServerORM {
                     item = { field: item.field, type: 'integer',defaultValueOnInsert:0, alternatives:['PlantID','plantID','plantid','PLANTID'] };
                     break;
             }
-            table[item.field] = item;
+            table[item.field.toLowerCase()] = item;
         }
         await this._applySchemaOverrides();
+    }
+
+    async _readDir(dir){
+        const fs = require('fs');
+        try{
+            if(!dir.endsWith('/'))
+                dir += '/'
+            let files = fs.readdirSync(dir)
+            return files;
+        }catch(ex){
+            return [];
+        }        
     }
     
     /** @returns {Promise<void>} */
     async _applySchemaOverrides() {
+       
+        let files = await this._readDir(this._schemaPath);
+        if(!files.length)
+            return
+        let fileLCMap = {}
+        files.map(fileName => {
+            let fileN = fileName.toLowerCase();
+            let fileType = 'js'
+            if(fileN.endsWith('.json')){
+                fileN = fileN.slice(0, fileN.length - 5)
+                fileType = 'json'
+            }                
+            else if(fileN.endsWith('.js')){
+                fileN = fileN.slice(0, fileN.length - 3)
+                fileType = 'js'
+            }else
+                return;
+                
+
+            fileLCMap[fileN] = {fileName,fileType};
+        })
+            
         for (let tableName in this._schemas) {
             let table = this._schemas[tableName];
             try {
-                let override = require(`${this._schemaPath}${tableName}`)(this.schemaOptions); //only require based on 
+
+                let schemaFile = fileLCMap[tableName];
+                if(!schemaFile)
+                    continue;
+
+                let overrideSchema,override = {};    
+                if(schemaFile.fileType == 'js')
+                    overrideSchema = require(`${this._schemaPath}${schemaFile.fileName}`)(this.schemaOptions); //only require based on 
+                else
+                    overrideSchema = require(`${this._schemaPath}${schemaFile.fileName}`); //only require based on 
+               
+
                 let fieldsToDel = [];
-                for (let fieldName in override) {
+                for (let f in overrideSchema) {
+                    
+                    let fieldName = f.toLowerCase();
+
+                    override[fieldName] = overrideSchema[f];
+                 
                     if (!table[fieldName]) {
                         fieldsToDel.push(fieldName);
                         continue;
                     }
+
                     if (typeof override[fieldName] === 'string')
                         override[fieldName] = { type: override[fieldName] };
+                        
                     table[fieldName] = { ...table[fieldName], ...override[fieldName] };
                     
                     if(table[fieldName].alias){ //if there is any alias then make it alternatives
@@ -139,7 +219,20 @@ class SqlServerORM {
                 }
             }
             catch (ex) { }
+
+            if(typeof table._meta !== 'object') //we must have _meta object in schema
+                table._meta = {}
         }
+    }
+
+    /** @returns {string} */
+    _getSequenceNameForID(tableName, item) {
+        let tableNameLC = tableName.toLowerCase();
+        let seqName = '';
+        if (this._sequenceMap[tableNameLC]) {
+            seqName = this._sequenceMap[tableNameLC][item.field] || this._sequenceMap[tableNameLC][item.field.toLowerCase()] || '';
+        }
+        return seqName;
     }
     
     /** @returns {any} */
@@ -149,12 +242,9 @@ class SqlServerORM {
     
     /** @returns {any} */
     getSchema(schema) {
-        if(schema.includes('-'))
-            schema = schema.replaceAll('-','_')
-        let schemaName = this._schemasLowerCasedMap[schema.toLowerCase()]
-        if (!this._schemas[schemaName])
+        if (!this._schemas[schema.toLowerCase()])
             throw `Unable to find schema for ${schema}`;
-        return JSON.parse(JSON.stringify(this._schemas[schemaName])); //we always should return the copy of schema so that it won't get mutated
+        return JSON.parse(JSON.stringify(this._schemas[schema.toLowerCase()])); //we always should return the copy of schema so that it won't get mutated
     }
     
     /** @returns {string} */
@@ -235,13 +325,16 @@ class SqlServerORM {
         }
         if (!fieldModel.alternatives)
             fieldModel.alternatives = [];
+
         if (typeof fieldValue == 'undefined') {
+
             for (let alt of fieldModel.alternatives) {
                 if (typeof obj[alt] !== 'undefined') {
                     fieldValue = obj[alt];
                     break;
                 }
             }
+
             if (typeof fieldValue == 'undefined') { //if it is still undefined then return
                 if (mode == 'insert' && typeof fieldModel.defaultValueOnInsert !== 'undefined')
                     fieldValue = fieldModel.defaultValueOnInsert;
@@ -250,7 +343,9 @@ class SqlServerORM {
                 else
                     return null;
             }
+
         }
+
         if (fieldModel.type == 'any') {
             fieldModel = this._determineFieldModel(fieldValue);
         }
@@ -452,16 +547,17 @@ class SqlServerORM {
         let obj = {}; //let obj = JSON.parse(JSON.stringify(params))//copying
         for (let i in params) {
             let val = params[i];
+            let key = i.replaceAll('-','_').toLowerCase();
             if (typeof val === 'object') {
                 if (val instanceof moment)
-                    obj[i] = val.clone();
+                    obj[key] = val.clone();
                 else if (val instanceof Date)
-                    obj[i] = new Date(val.getTime());
+                    obj[key] = new Date(val.getTime());
                 else
-                    obj[i] = JSON.parse(JSON.stringify(val));
+                    obj[key] = JSON.parse(JSON.stringify(val));
             }
             else
-                obj[i] = params[i];
+                obj[key] = val;
         }
         return obj;
     }
@@ -502,15 +598,23 @@ class SqlServerORM {
             if (schema instanceof Array) {
                 fieldModel = { type: 'any' };
                 for (let prop of schema) {
+
+                    if(prop == '_meta')
+                        continue;
+
                     val = obj[prop];
                     processField(prop);
                 }
             }
             else {
-                if (this._fixNVP && schema['NameValuePairs']) {
+                if (this._fixNVP && schema['namevaluepairs']) {
                     obj = this._normalizeNVPFields(obj, schema);
                 }
                 for (let prop in schema) {
+
+                    if(prop == '_meta')
+                        continue;
+
                     val = obj[prop];
                     fieldModel = schema[prop];
                     processField(prop);
@@ -519,6 +623,10 @@ class SqlServerORM {
         }
         else {
             for (let prop in obj) {
+
+                if(prop == '_meta')
+                    continue;
+
                 val = obj[prop];
                 fieldModel = this._determineFieldModel(val);
                 processField(prop);
@@ -558,15 +666,23 @@ class SqlServerORM {
             if (schema instanceof Array) {
                 fieldModel = { type: 'any' };
                 for (let prop of schema) {
+
+                    if(prop == '_meta')
+                        continue;
+
                     val = obj[prop];
                     processField(prop);
                 }
             }
             else {
-                if (this._fixNVP && schema['NameValuePairs']) {
+                if (this._fixNVP && schema['namevaluepairs']) {
                     obj = this._normalizeNVPFields(obj, schema);
                 }
                 for (let prop in schema) {
+
+                    if(prop == '_meta')
+                        continue;
+
                     val = obj[prop];
                     fieldModel = schema[prop];
                     processField(prop);
@@ -575,6 +691,10 @@ class SqlServerORM {
         }
         else {
             for (let prop in obj) {
+
+                if(prop == '_meta')
+                    continue;
+
                 val = obj[prop];
                 fieldModel = this._determineFieldModel(val);
                 processField(prop);
@@ -602,9 +722,14 @@ class SqlServerORM {
         if(!selectedFields || !Array.isArray(selectedFields))
                 selectedFields = Object.keys(schema)
         
-        for (let fieldName of selectedFields) {
+        for (let f of selectedFields) {
+            let fieldName = f.toLowerCase();
+
+            if(fieldName == '_meta')
+                continue;
+
             let type = schema[fieldName],
-                fieldAlias = fieldName;
+                fieldAlias = f;
             
             if(type == null)  //it means field is not in schema
                 continue;
@@ -612,6 +737,9 @@ class SqlServerORM {
             if (typeof type === 'object') {
                 if (type.preventSelection) //means our schema has defined that we don't want this field to apear in select clause
                     continue;
+
+                if(type.field)
+                    fieldAlias = type.field; 
 
                 if(type.alias != null)
                     fieldAlias = type.alias; 
@@ -767,12 +895,20 @@ class SqlServerORM {
             if (schema instanceof Array) {
                 fieldModel = { type: 'any' };
                 for (let prop of schema) {
+                    
+                    if(prop == '_meta')
+                        continue;
+
                     val = obj[prop];
                     processField(prop);
                 }
             }
             else {
                 for (let prop in schema) {
+
+                    if(prop == '_meta')
+                        continue;
+
                     val = obj[prop];
                     fieldModel = schema[prop];
                     processField(prop);
@@ -781,6 +917,10 @@ class SqlServerORM {
         }
         else {
             for (let prop in obj) {
+
+                if(prop == '_meta')
+                    continue;
+
                 val = obj[prop];
                 fieldModel = this._determineFieldModel(val);
                 processField(prop);
@@ -793,6 +933,20 @@ class SqlServerORM {
     
     /** @returns {Promise<any>} */
     async getNextSeq(dbo, seqName) {
+
+        if (this.isProgressDataServer) {
+            let data = await dbo.sql(`SET NOCOUNT ON;
+            DECLARE @opval bigint;
+            EXEC ${dbo.database}.${this.schemaOwner}._SEQP_REV_${seqName.toLowerCase()} 1, @opval output;
+            SELECT @opval AS "${seqName}";`);
+            if (data.length) {
+                return data[0][seqName];
+            }
+            else {
+                throw "Invalid Sequence";
+            }
+        }
+
         let data = await dbo.sql(`select NEXT VALUE FOR ${this.schemaOwner}.${seqName} as "${seqName}"`);
         if (data.length) {
             return data[0][seqName];
@@ -879,16 +1033,30 @@ class SqlServerORM {
 
         if (!schema)
             schema = this.getSchema(tableName);
+         
+            
         let data;
-        if (Array.isArray(params) && params.length) { //if it is array then it means we are inserting multiple records
+
+        if(!Array.isArray(params))
+            params = [params];
+
+        let identityInsertSql = (schema._meta.identityInsert)?`SET IDENTITY_INSERT ${dbo.database}.${this.schemaOwner}."${tableName}" ON;`:''
+
+        if (params.length) { 
             let values = [], fields;
             for (let row of params) {
+               
+                if(schema._meta.progressDataServerIDSequence){
+                    row = this._copy(row) //just copy the params if there is progress dataserver 
+                    row[schema._meta.idField] = await this.getNextSeq(dbo,schema._meta.progressDataServerIDSequence)
+                }                
                 data = this.generateInsertQueryDataHelper(row, schema);
                 if (!fields)
                     fields = data.fields;
                 values.push(`(${data.values})`);
             }
-            await dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${fields}) VALUES ${values.join(',')}`);
+
+            await dbo.sql(`${identityInsertSql}INSERT INTO ${dbo.database}.${this.schemaOwner}."${tableName}" (${fields}) VALUES ${values.join(',')}`);
             let results = [];
             if(returnResult){               
                 for(let row of params){
@@ -897,14 +1065,7 @@ class SqlServerORM {
                 }
             }
             return results; 
-        }
-        data = this.generateInsertQueryDataHelper(params, schema);
-        await dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${data.fields})  VALUES(${data.values})`);
-
-        if(returnResult){
-            return this.readOne(dbo, tableName,params)
-        }
-            
+        }            
 
     }
     

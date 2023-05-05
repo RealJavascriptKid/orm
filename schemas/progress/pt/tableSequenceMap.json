@@ -26,5 +26,5 @@
     "SubstituteLog":{"SubstituteLogID":"SubstituteLogID"},
     "Task":{"TaskID":"TaskID"},
     "TaskLog":{"TaskLogID":"TaskLogID"},
-    "WebSession":{"WebSession":"WebSession"}
+    "WebSession":{"SessionID":"WebSession"}
 }

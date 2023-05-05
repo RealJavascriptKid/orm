@@ -9,7 +9,6 @@ class ProgressORM {
     /** @returns {Promise<ProgressORM>} */
     constructor(opts) {
         this._schemas = null;
-        this._schemasLowerCasedMap = {}
         this._schemaPath = null;
         this._sequenceMap = null;
         this._overrideSchemaStrict = null;
@@ -19,12 +18,18 @@ class ProgressORM {
     /** @returns {Promise<ProgressORM>} */
     async _init({ dbName, dbo, //needed for schema gathering
     schemaOwner, schemaPath, dateFormat, dateTimeFormat, timeFormat, overrideSchemaStrict, schemaOptions }) {
+        const path = require('path')
+
         if (!dbo || typeof dbo !== 'object')
             throw `"dbo" must be provided. It is needed to get schema`;
-        if (!dbName)
-            throw `"dbName" must be provided`;
+       
         this.schemaOwner = schemaOwner || 'PUB';
-        this.dbName = dbName;
+
+        this.dbName = dbName || dbo.database;
+
+        if (!this.dbName)
+            throw `"dbName" must be provided`;
+
         this.type = 'progress';
         this.schemaOptions = schemaOptions || {
             plantid: 0
@@ -38,13 +43,16 @@ class ProgressORM {
         this._schemaPath = schemaPath || `./schemas/progress/${this.dbName.toLowerCase()}/`;
         if (!this._schemaPath.endsWith('/'))
             this._schemaPath += '/';
+            
+        this._schemaPath = path.resolve(this._schemaPath)
+
         this.validDateFormats = ['MM/DD/YYYY', 'MM/DD/YY', 'M/D/YYYY', 'M/D/YY', 'YYYY-MM-DD'];
         this.validTimeFormats = ['HH:mm:ss', 'HH:mm', 'HHmm', 'HHmmss'];
         this.validDateTimeFormats = ['MM/DD/YYYY HH:mm:ss', 'MM/DD/YY HH:mm:ss', 'M/D/YYYY HH:mm:ss', 'M/D/YY HH:mm:ss', 'YYYY-MM-DD HH:mm:ss',
             'MM/DD/YYYY HH:mm', 'MM/DD/YY HH:mm', 'M/D/YYYY HH:mm', 'M/D/YY HH:mm', 'YYYY-MM-DD HH:mm',
             'MM/DD/YYYY HHmm', 'MM/DD/YY HHmm', 'M/D/YYYY HHmm', 'M/D/YY HHmm', 'YYYY-MM-DD HHmm',
             'MM/DD/YYYY HHmmss', 'MM/DD/YY HHmmss', 'M/D/YYYY HHmmss', 'M/D/YY HHmmss', 'YYYY-MM-DD HHmmss'];
-        this._sequenceMap = require(`./schemas/progress/${this.dbName.toLowerCase()}/tableSequenceMap.json`); //used by getSchema utomatically figure out ID fields
+        this._sequenceMap = this._copy(require(`./schemas/progress/${this.dbName.toLowerCase()}/tableSequenceMap.json`)); //used by getSchema utomatically figure out ID fields
         await this._populateSchema(dbo);
         return this;
     }
@@ -80,18 +88,12 @@ class ProgressORM {
                                     order by  f."_file-name"
                                     with (nolock)`);
         for (let item of allFields) {
-            let table = this._schemas[item.table];
+            let table = this._schemas[item.table.toLowerCase()];
             if (!table)
-                table = this._schemas[item.table] = {};
-
-            this._schemasLowerCasedMap[item.table.toLowerCase()] = item.table; //need this so that schema name is case insensitive
-
+                table = this._schemas[item.table.toLowerCase()] = {};
+                
             if (item.ArrayExtent > 0) //we are NOT handling array type fields
-                continue;                
-
-            if (['TimeFrame', 'RecordSeq','PROGRESS_RECID','PROGRESS_RECID_IDENT_'].includes(item.field))
                 continue;
-
             let seqName = this._getSequenceNameForID(item.table, item);
             if (seqName) {
                 item.preventUpdate = true;
@@ -111,27 +113,81 @@ class ProgressORM {
                     item = { field: item.field, type: 'integer',defaultValueOnInsert:0, alternatives:['PlantID','plantID','plantid','PLANTID'] };
                     break;
             }
-            table[item.field] = item;
+            table[item.field.toLowerCase()] = item;
         }
         await this._applySchemaOverrides();
     }
+
+    
+    async _readDir(dir){
+        const fs = require('fs');
+        try{
+            if(!dir.endsWith('/'))
+                dir += '/'
+            let files = fs.readdirSync(dir)
+            return files;
+        }catch(ex){
+            return [];
+        }        
+    }
+    
     
     /** @returns {Promise<void>} */
     async _applySchemaOverrides() {
+
+        let files = await this._readDir(this._schemaPath);
+        if(!files.length)
+            return
+        let fileLCMap = {}
+        files.map(fileName => {
+            let fileN = fileName.toLowerCase();
+            let fileType = 'js'
+            if(fileN.endsWith('.json')){
+                fileN = fileN.slice(0, fileN.length - 5)
+                fileType = 'json'
+            }                
+            else if(fileN.endsWith('.js')){
+                fileN = fileN.slice(0, fileN.length - 3)
+                fileType = 'js'
+            }else
+                return;
+                
+
+            fileLCMap[fileN] = {fileName,fileType};
+        })
+
         for (let tableName in this._schemas) {
             let table = this._schemas[tableName];
             try {
-                let override = require(`${this._schemaPath}${tableName}`)(this.schemaOptions); //only require based on 
+                let schemaFile = fileLCMap[tableName];
+                if(!schemaFile)
+                    continue;
+
+                let overrideSchema,override = {};    
+                if(schemaFile.fileType == 'js')
+                    overrideSchema = require(`${this._schemaPath}${schemaFile.fileName}`)(this.schemaOptions); //only require based on 
+                else
+                    overrideSchema = require(`${this._schemaPath}${schemaFile.fileName}`); //only require based on 
+                
+
                 let fieldsToDel = [];
-                for (let fieldName in override) {
+                for (let f in overrideSchema) {
+                    
+                    let fieldName = f.toLowerCase();
+
+                    override[fieldName] = overrideSchema[f]
+
                     if (fieldName == '_nvp')
                         continue;
+
                     if (!table[fieldName]) {
                         fieldsToDel.push(fieldName);
                         continue;
                     }
+
                     if (typeof override[fieldName] === 'string')
                         override[fieldName] = { type: override[fieldName] };
+
                     table[fieldName] = { ...table[fieldName], ...override[fieldName] };
 
                     if(table[fieldName].alias){ //if there is any alias then make it alternatives
@@ -141,8 +197,10 @@ class ProgressORM {
                         table[fieldName].alternatives.push(table[fieldName].alias)
                     }
                 }
+
                 for (let fieldName of fieldsToDel)
                     delete override[fieldName];
+
                 if (this._overrideSchemaStrict) {
                     fieldsToDel = [];
                     for (let fieldName in table) {
@@ -152,19 +210,26 @@ class ProgressORM {
                     for (let fieldName of fieldsToDel)
                         delete table[fieldName];
                 }
+
                 if (override._nvp) {
                     table._nvp = override._nvp; //nvp schema
                 }
+
             }
             catch (ex) { }
+
+            if(typeof table._meta !== 'object') //we must have _meta object in schema
+                table._meta = {}
+
         }
     }
     
     /** @returns {string} */
     _getSequenceNameForID(tableName, item) {
+        let tableNameLC = tableName.toLowerCase();
         let seqName = '';
-        if (this._sequenceMap[tableName]) {
-            seqName = this._sequenceMap[tableName][item.field] || '';
+        if (this._sequenceMap[tableNameLC]) {
+            seqName = this._sequenceMap[tableNameLC][item.field] || this._sequenceMap[tableNameLC][item.field.toLowerCase()] || '';
         }
         return seqName;
     }
@@ -176,10 +241,9 @@ class ProgressORM {
     
     /** @returns {any} */
     getSchema(schema) {
-        let schemaName = this._schemasLowerCasedMap[schema.toLowerCase()]
-        if (!this._schemas[schemaName])
+        if (!this._schemas[schema.toLowerCase()])
             throw `Unable to find schema for ${schema}`;
-        return JSON.parse(JSON.stringify(this._schemas[schemaName])); //we always should return the copy of schema so that it won't get mutated
+        return JSON.parse(JSON.stringify(this._schemas[schema.toLowerCase()])); //we always should return the copy of schema so that it won't get mutated
     }
     
     /** @returns {string} */
@@ -450,17 +514,21 @@ class ProgressORM {
         let moment = this.moment;
         let obj = {}; //let obj = JSON.parse(JSON.stringify(params))//copying
         for (let i in params) {
-            let val = params[i];
+
+            let val = params[i];           
+            let key = i.toLowerCase();
+
             if (typeof val === 'object') {
                 if (val instanceof moment)
-                    obj[i] = val.clone();
+                    obj[key] = val.clone();
                 else if (val instanceof Date)
-                    obj[i] = new Date(val.getTime());
+                    obj[key] = new Date(val.getTime());
                 else
-                    obj[i] = JSON.parse(JSON.stringify(val));
+                    obj[key] = JSON.parse(JSON.stringify(val));
             }
             else
-                obj[i] = params[i];
+                obj[key] = val;
+                
         }
         return obj;
     }
@@ -486,7 +554,7 @@ class ProgressORM {
         let fields = [], values = [];
         let val = '', fieldModel, requiredFails = [];
         let processField = (prop) => {
-            if (prop == 'NameValuePairs')
+            if (prop == 'namevaluepairs')
                 return;
             if (typeof fieldModel === 'string')
                 fieldModel = { type: fieldModel };
@@ -501,8 +569,8 @@ class ProgressORM {
         };
         let processNVPField = (nvpFields) => {
             let NVPObject = {};
-            if (obj.NameValuePairs)
-                NVPObject = this.nvpToObject(obj.NameValuePairs);
+            if (obj.namevaluepairs)
+                NVPObject = this.nvpToObject(obj.namevaluepairs);
             for (let prop in nvpFields) {
                 fieldModel = nvpFields[prop];
                 val = obj[prop];
@@ -521,18 +589,26 @@ class ProgressORM {
             }
             val = this.objectToNvp(NVPObject);
             values.push(val);
-            fields.push(`"NameValuePairs"`);
+            fields.push(`"namevaluepairs"`);
         };
         if (schema) {
             if (schema instanceof Array) {
                 fieldModel = { type: 'any' };
                 for (let prop of schema) {
+
+                    if(prop == '_meta')
+                        continue;
+
                     val = obj[prop];
                     processField(prop);
                 }
             }
             else {
                 for (let prop in schema) {
+
+                    if(prop == '_meta')
+                        continue;
+
                     val = obj[prop];
                     fieldModel = schema[prop];
                     processField(prop);
@@ -541,6 +617,10 @@ class ProgressORM {
         }
         else {
             for (let prop in obj) {
+                if (prop === '_meta') {                    
+                    continue;
+                }
+
                 if (prop === '_nvp') {
                     processNVPField(schema[prop]);
                     continue;
@@ -568,7 +648,7 @@ class ProgressORM {
         let updateSqlStr = '';
         let val = '', fieldModel, requiredFails = [];
         let processField = (prop) => {
-            if (prop == 'NameValuePairs')
+            if (prop == 'namevaluepairs')
                 return;
             if (typeof fieldModel === 'string')
                 fieldModel = { type: fieldModel };
@@ -584,8 +664,8 @@ class ProgressORM {
         };
         let processNVPField = (nvpFields) => {
             let NVPObject = {};
-            if (obj.NameValuePairs)
-                NVPObject = this.nvpToObject(obj.NameValuePairs);
+            if (obj.namevaluepairs)
+                NVPObject = this.nvpToObject(obj.namevaluepairs);
             for (let prop in nvpFields) {
                 fieldModel = nvpFields[prop];
                 val = obj[prop];
@@ -607,18 +687,26 @@ class ProgressORM {
                 return;
             if (updateSqlStr.length)
                 updateSqlStr += ', ';
-            updateSqlStr += ` "NameValuePairs" = '${val}' `;
+            updateSqlStr += ` "namevaluepairs" = '${val}' `;
         };
         if (schema) {
             if (schema instanceof Array) {
                 fieldModel = { type: 'any' };
                 for (let prop of schema) {
+                    
+                    if(prop == '_meta')
+                        continue;
+
                     val = obj[prop];
                     processField(prop);
                 }
             }
             else {
                 for (let prop in schema) {
+                    
+                    if(prop === '_meta')
+                         continue;
+
                     if (prop === '_nvp') {
                         processNVPField(schema[prop]);
                         continue;
@@ -631,6 +719,10 @@ class ProgressORM {
         }
         else {
             for (let prop in obj) {
+
+                if(prop == '_meta')
+                    continue;
+
                 val = obj[prop];
                 fieldModel = this._determineFieldModel(val);
                 processField(prop);
@@ -659,15 +751,21 @@ class ProgressORM {
         if(!selectedFields || !Array.isArray(selectedFields))
             selectedFields = Object.keys(schema)
 
-        for (let fieldName of selectedFields) {
+        for (let f of selectedFields) {
+            
+            let fieldName = f.toLowerCase();
+
+            if(fieldName == '_meta')
+                continue;
+
             if (fieldName == '_nvp') { //handling NameValuePairs field
-                if (!schema['NameValuePairs']) {
+                if (!schema['namevaluepairs']) {
                     fields.push(`${prefix}"NameValuePairs"`);
                 }
                 continue;
             }
             let type = schema[fieldName],
-                fieldAlias = fieldName;
+                fieldAlias = f;
 
             if(type == null)  //it means field is not in schema
                 continue;
@@ -675,6 +773,9 @@ class ProgressORM {
             if (typeof type === 'object') {
                 if (type.preventSelection) //means our schema has defined that we don't want this field to apear in select clause
                     continue;
+
+                if(type.field)
+                    fieldAlias = type.field; 
 
                 if(type.alias != null)
                     fieldAlias = type.alias;     
@@ -763,7 +864,7 @@ class ProgressORM {
         let whereSqlStr = '';
         let val = '', fieldModel;
         let processField = (prop) => {
-            if (prop == 'NameValuePairs')
+            if (prop == 'namevaluepairs')
                 return;
             let condition = 'equals';
             if (typeof fieldModel === 'string')
@@ -825,8 +926,8 @@ class ProgressORM {
         };
         let processNVPField = (nvpFields) => {
             let NVPObject = {};
-            if (obj.NameValuePairs)
-                NVPObject = this.nvpToObject(obj.NameValuePairs);
+            if (obj.namevaluepairs)
+                NVPObject = this.nvpToObject(obj.namevaluepairs);
             for (let prop in nvpFields) {
                 fieldModel = nvpFields[prop];
                 val = obj[prop];
@@ -858,12 +959,18 @@ class ProgressORM {
             if (schema instanceof Array) {
                 fieldModel = { type: 'any' };
                 for (let prop of schema) {
+                    if(prop == '_meta')
+                        continue;
                     val = obj[prop];
                     processField(prop);
                 }
             }
             else {
                 for (let prop in schema) {
+
+                    if(prop == '_meta')
+                        continue;
+
                     if (prop === '_nvp') {
                         processNVPField(schema[prop]);
                         continue;
@@ -876,6 +983,10 @@ class ProgressORM {
         }
         else {
             for (let prop in obj) {
+                
+                if(prop == '_meta')
+                    continue;
+
                 val = obj[prop];
                 fieldModel = this._determineFieldModel(val);
                 processField(prop);

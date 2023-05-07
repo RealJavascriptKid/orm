@@ -48,6 +48,9 @@ class SqlServerORM {
 
         this._schemaPath = path.resolve(this._schemaPath)
 
+        if (!this._schemaPath.endsWith('/'))
+            this._schemaPath += '/';
+
         this._sequenceMap = {}
 
         this.validDateFormats = ['MM/DD/YYYY', 'MM/DD/YY', 'M/D/YYYY', 'M/D/YY', 'YYYY-MM-DD'];
@@ -134,8 +137,10 @@ class SqlServerORM {
     async _readDir(dir){
         const fs = require('fs');
         try{
-            if(!dir.endsWith('/'))
+            if(!dir.endsWith('/')){
                 dir += '/'
+            }
+                
             let files = fs.readdirSync(dir)
             return files;
         }catch(ex){
@@ -145,7 +150,7 @@ class SqlServerORM {
     
     /** @returns {Promise<void>} */
     async _applySchemaOverrides() {
-       
+                
         let files = await this._readDir(this._schemaPath);
         if(!files.length)
             return

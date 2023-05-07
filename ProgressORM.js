@@ -47,7 +47,7 @@ class ProgressORM {
         this._schemaPath = path.resolve(this._schemaPath)
 
         if (!this._schemaPath.endsWith('/'))
-            this._schemaPath += '/';s
+            this._schemaPath += '/';
 
         this.validDateFormats = ['MM/DD/YYYY', 'MM/DD/YY', 'M/D/YYYY', 'M/D/YY', 'YYYY-MM-DD'];
         this.validTimeFormats = ['HH:mm:ss', 'HH:mm', 'HHmm', 'HHmmss'];

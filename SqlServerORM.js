@@ -66,6 +66,10 @@ class SqlServerORM {
     
     /** @returns {Promise<void>} */
     async _populateSchema(dbo) {
+
+        if(dbo.database)
+            let catalog = `${dbo.database}.`
+            
         let allFields = await dbo.sql(`select c.COLUMN_NAME as 'field',c.DATA_TYPE as 'dbType', (
                                     case  c.DATA_TYPE 
                                         when 'bit' then 'boolean'
@@ -85,7 +89,7 @@ class SqlServerORM {
                                     ,c.CHARACTER_MAXIMUM_LENGTH as 'width'
                                     ,TABLE_NAME as 'table'
                                     ,COLUMNPROPERTY(object_id(TABLE_SCHEMA+'.'+TABLE_NAME), COLUMN_NAME, 'IsIdentity') as 'IsID'
-                                    FROM INFORMATION_SCHEMA.COLUMNS c 
+                                    FROM ${catalog}INFORMATION_SCHEMA.COLUMNS c 
                                     order by TABLE_NAME`);
         for (let item of allFields) {
 

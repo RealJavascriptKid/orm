@@ -67,9 +67,10 @@ class SqlServerORM {
     /** @returns {Promise<void>} */
     async _populateSchema(dbo) {
 
+        let catalog = '';
         if(dbo.database)
-            let catalog = `${dbo.database}.`
-            
+            catalog = `${dbo.database}.`
+
         let allFields = await dbo.sql(`select c.COLUMN_NAME as 'field',c.DATA_TYPE as 'dbType', (
                                     case  c.DATA_TYPE 
                                         when 'bit' then 'boolean'

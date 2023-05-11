@@ -17,7 +17,7 @@ class ProgressORM {
     
     /** @returns {Promise<ProgressORM>} */
     async _init({ dbName, dbo, //needed for schema gathering
-    schemaOwner, schemaPath, dateFormat, dateTimeFormat, timeFormat, overrideSchemaStrict, schemaOptions }) {
+    schemaOwner, schemaPath, dateFormat, dateTimeFormat, timeFormat, overrideSchemaStrict, schemaOptions, includeDBPrefix }) {
         const path = require('path')
 
         if (!dbo || typeof dbo !== 'object')
@@ -30,6 +30,7 @@ class ProgressORM {
         if (!this.dbName)
             throw `"dbName" must be provided`;
 
+        this.dbPrefix = (includeDBPrefix && dbo.database)?`${dbo.database}.`:'';
         this.type = 'progress';
         this.schemaOptions = schemaOptions || {
             plantid: 0
@@ -85,8 +86,8 @@ class ProgressORM {
                                     END) as 'type'
                                     ,f."_file-name" as 'table'  
                                     ,fd."_Width" as 'width'                 
-                                    FROM ${this.schemaOwner}."_field" fd 
-                                    INNER JOIN ${this.schemaOwner}."_file" f ON fd."_file-recid" = f.ROWID 
+                                    FROM ${this.dbPrefix}${this.schemaOwner}."_field" fd 
+                                    INNER JOIN ${this.dbPrefix}${this.schemaOwner}."_file" f ON fd."_file-recid" = f.ROWID 
                                     WHERE f."_Hidden" = 0 
                                     order by  f."_file-name"
                                     with (nolock)`);
@@ -302,7 +303,7 @@ class ProgressORM {
         //for instance {value:"2.3",type:"decimal"} then we will return parseFloat(fieldModel.value)
         //example 2 {value}
         if (mode == 'insert' && fieldModel.insertSequence && (fieldValue == null || fieldModel.preventInsert)) {
-            return `(Select ${this.schemaOwner}."${fieldModel.insertSequence}".NextVal As '${fieldModel.insertSequence}' From SysProgress.Syscalctable)`;
+            return `(Select ${this.dbPrefix}${this.schemaOwner}."${fieldModel.insertSequence}".NextVal As '${fieldModel.insertSequence}' From SysProgress.Syscalctable)`;
         }
         if (fieldModel.preventUpdate && mode == 'update')
             return null;
@@ -349,7 +350,7 @@ class ProgressORM {
                 }
                 else if (fieldValue instanceof moment)
                     return `${quote}${fieldValue.format(fieldModel.format)}${quote}`;
-                else if (fieldValue === 'SYSTIMESTAMP')
+                else if (fieldValue === 'SYSTIMESTAMP' || fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSDATE')
                     return `${quote}${moment().format(fieldModel.format)}${quote}`;
                 else if (moment(fieldValue, this.validDateFormats, false).isValid())
                     return `${quote}${moment(fieldValue, this.validDateFormats, false).format(fieldModel.format)}${quote}`;
@@ -365,7 +366,7 @@ class ProgressORM {
                 }
                 else if (fieldValue instanceof moment)
                     return `${quote}${fieldValue.format(fieldModel.format)}${quote}`;
-                else if (fieldValue === 'SYSTIMESTAMP')
+                else if (fieldValue === 'SYSTIMESTAMP' || fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSDATE')
                     return `${fieldValue}`;
                 else if (moment(fieldValue, this.validDateTimeFormats, false).isValid())
                     return `${quote}${moment(fieldValue, this.validDateTimeFormats, false).format(fieldModel.format)}${quote}`;
@@ -381,7 +382,7 @@ class ProgressORM {
                 }
                 else if (fieldValue instanceof moment)
                     return `${quote}${fieldValue.format(fieldModel.format)}${quote}`;
-                else if (fieldValue === 'SYSTIMESTAMP')
+                else if (fieldValue === 'SYSTIMESTAMP' || fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSDATE' || fieldValue === 'SYSTIME')
                     return `${quote}${moment().format(fieldModel.format)}${quote}`;
                 else if (moment(fieldValue, this.validTimeFormats, false).isValid())
                     return `${quote}${moment(fieldValue, this.validTimeFormats, false).format(fieldModel.format)}${quote}`;
@@ -1002,7 +1003,7 @@ class ProgressORM {
     
     /** @returns {Promise<any>} */
     async getNextSeq(dbo, seqName) {
-        let data = await dbo.sql(`select ${this.schemaOwner}."${seqName}".nextVal as "${seqName}" from Sysprogress.Syscalctable`);
+        let data = await dbo.sql(`select ${this.dbPrefix}${this.schemaOwner}."${seqName}".nextVal as "${seqName}" from Sysprogress.Syscalctable`);
         if (data.length) {
             return data[0][seqName];
         }
@@ -1071,7 +1072,7 @@ class ProgressORM {
         }
 
         let results = await dbo.sql(`SELECT ${top}  ${this.makeSQLSelector(schema,null,options.fields)} 
-                    FROM ${this.schemaOwner}."${tableName}" 
+                    FROM ${this.dbPrefix}${this.schemaOwner}."${tableName}" 
                     ${where}
                     ${orderBy}
                     ${offset}
@@ -1108,7 +1109,7 @@ class ProgressORM {
         
         for (let row of arr) {
             let data = this.generateInsertQueryDataHelper(row, schema);
-            await dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${data.fields})  VALUES(${data.values})`);            
+            await dbo.sql(`INSERT INTO ${this.dbPrefix}${this.schemaOwner}."${tableName}" (${data.fields})  VALUES(${data.values})`);            
         }
 
         if(returnResult){
@@ -1137,7 +1138,7 @@ class ProgressORM {
         //archiving previous     
         //await dbo.sql(`INSERT INTO dbo."${tableName}_History" select * from dbo."${tableName}_History" ${where} `)
         let updateSqlStr = this.generateUpdateQueryDataHelper(params, schema);
-        await dbo.sql(`UPDATE ${this.schemaOwner}."${tableName}" 
+        await dbo.sql(`UPDATE ${this.dbPrefix}${this.schemaOwner}."${tableName}" 
                SET                 
                ${updateSqlStr}
                ${where} 
@@ -1158,7 +1159,7 @@ class ProgressORM {
         let where = this.generateSimpleWhereClause(query, schema);
         if (!where.startsWith('WHERE '))
             throw `Cannot delete without filter criteria`;
-        return dbo.sql(`DELETE FROM ${this.schemaOwner}."${tableName}" ${where}`);
+        return dbo.sql(`DELETE FROM ${this.dbPrefix}${this.schemaOwner}."${tableName}" ${where}`);
     }
 }
 

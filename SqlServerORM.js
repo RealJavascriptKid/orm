@@ -17,7 +17,7 @@ class SqlServerORM {
     /** @returns {Promise<SqlServerORM>} */
     async _init({ dbName, dbo, //needed for schema gathering    
     schemaOwner, schemaPath, dateFormat, dateTimeFormat, timeFormat, overrideSchemaStrict, schemaOptions, fixNVPs, //CFS NVP fields
-    isProgressDataServer
+    isProgressDataServer,includeDBPrefix
      }) {
         const path = require('path')
 
@@ -31,6 +31,7 @@ class SqlServerORM {
         if (!this.dbName)
             throw `"dbName" must be provided`;
 
+        this.dbPrefix = ((includeDBPrefix == true || includeDBPrefix == null) && dbo.database)?`${dbo.database}.`:'';
         this.type = 'sqlserver';
         this.isProgressDataServer = isProgressDataServer || false;
         this.schemaOptions = schemaOptions || {
@@ -66,31 +67,38 @@ class SqlServerORM {
     
     /** @returns {Promise<void>} */
     async _populateSchema(dbo) {
-
-        let catalog = '';
-        if(dbo.database)
-            catalog = `${dbo.database}.`
+      
 
         let allFields = await dbo.sql(`select c.COLUMN_NAME as 'field',c.DATA_TYPE as 'dbType', (
                                     case  c.DATA_TYPE 
-                                        when 'bit' then 'boolean'
-                                        when 'varchar' then 'string'
-                                        when 'char' then 'string'
-                                        when 'nvarchar' then 'string'
-                                        when 'date' then 'date'
-                                        when 'datetime' then 'datetime'
-										when 'datetime2' then 'datetime'
-                                        when 'datetimeoffset' then 'datetime'
-										when 'time' then 'time'
-                                        when 'int' then 'integer'
-                                        when 'bigint' then 'integer'
-                                        when 'numeric' then 'decimal'
-                                        else 'string' 
+                                    when 'bit' then 'boolean'
+                                    when 'varchar' then 'string'
+                                    when 'char' then 'string'
+                                    when 'nvarchar' then 'string'
+                                    when 'ntext' then 'string'
+                                    when 'nchar' then 'string'
+                                    when 'text' then 'string'
+                                    when 'date' then 'date'
+                                    when 'smalldatetime' then 'datetime'
+                                    when 'datetime' then 'datetime'
+                                    when 'datetime2' then 'datetime'
+                                    when 'datetimeoffset' then 'datetime'
+                                    when 'time' then 'time'
+                                    when 'int' then 'integer'
+                                    when 'tinyint' then 'integer'
+                                    when 'smallint' then 'integer'
+                                    when 'bigint' then 'integer'
+                                    when 'numeric' then 'decimal'
+                                    when 'decimal' then 'decimal'
+                                    when 'integer' then 'integer'
+                                    when 'float' then 'decimal'
+                                    when 'real' then 'decimal'
+                                    else 'any' 
                                     end) as 'type' 
                                     ,c.CHARACTER_MAXIMUM_LENGTH as 'width'
                                     ,TABLE_NAME as 'table'
                                     ,COLUMNPROPERTY(object_id(TABLE_SCHEMA+'.'+TABLE_NAME), COLUMN_NAME, 'IsIdentity') as 'IsID'
-                                    FROM ${catalog}INFORMATION_SCHEMA.COLUMNS c 
+                                    FROM ${this.dbPrefix}INFORMATION_SCHEMA.COLUMNS c 
                                     order by TABLE_NAME`);
         for (let item of allFields) {
 
@@ -318,7 +326,7 @@ class SqlServerORM {
         //for instance {value:"2.3",type:"decimal"} then we will return parseFloat(fieldModel.value)
         //example 2 {value}
         if (mode == 'insert' && fieldModel.insertSequence && (fieldValue == null || fieldModel.preventInsert)) {
-            return `(NEXT VALUE FOR ${this.schemaOwner}.${fieldModel.insertSequence})`;
+            return `(NEXT VALUE FOR ${this.dbPrefix}${this.schemaOwner}.${fieldModel.insertSequence})`;
         }
         if (fieldModel.preventUpdate && mode == 'update')
             return null;
@@ -369,7 +377,7 @@ class SqlServerORM {
                 }
                 else if (fieldValue instanceof moment)
                     return `'${fieldValue.format(fieldModel.format)}'`;
-                else if (fieldValue === 'CURRENT_TIMESTAMP')
+                else if (fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSTIMESTAMP' || fieldValue === 'SYSDATE')
                     return `'${moment().format(fieldModel.format)}'`;
                 else if (moment(fieldValue, this.validDateFormats, false).isValid())
                     return `'${moment(fieldValue, this.validDateFormats, false).format(fieldModel.format)}'`;
@@ -385,9 +393,9 @@ class SqlServerORM {
                 }
                 else if (fieldValue instanceof moment)
                     return `'${fieldValue.format(fieldModel.format)}'`;
-                else if (fieldValue === 'getdate()' || fieldValue === 'CURRENT_TIMESTAMP')
+                else if (fieldValue === 'getdate()' || fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSTIMESTAMP' || fieldValue === 'SYSDATE')
                     return `${fieldValue}`;
-                else if (fieldValue === 'CURRENT_TIMESTAMP')
+                else if (fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSTIMESTAMP' || fieldValue === 'SYSDATE')
                     return `'${moment().format(fieldModel.format)}'`;
                 else if (moment(fieldValue, this.validDateTimeFormats, false).isValid())
                     return `'${moment(fieldValue, this.validDateTimeFormats, false).format(fieldModel.format)}'`;
@@ -403,7 +411,7 @@ class SqlServerORM {
                 }
                 else if (fieldValue instanceof moment)
                     return `'${fieldValue.format(fieldModel.format)}'`;
-                else if (fieldValue === 'CURRENT_TIMESTAMP')
+                else if (fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSTIMESTAMP' || fieldValue === 'SYSDATE')
                     return `'${moment().format(fieldModel.format)}'`;
                 else if (moment(fieldValue, this.validTimeFormats, false).isValid())
                     return `'${moment(fieldValue, this.validTimeFormats, false).format(fieldModel.format)}'`;
@@ -947,7 +955,7 @@ class SqlServerORM {
         if (this.isProgressDataServer) {
             let data = await dbo.sql(`SET NOCOUNT ON;
             DECLARE @opval bigint;
-            EXEC ${dbo.database}.${this.schemaOwner}._SEQP_REV_${seqName.toLowerCase()} 1, @opval output;
+            EXEC ${this.dbPrefix}${this.schemaOwner}._SEQP_REV_${seqName.toLowerCase()} 1, @opval output;
             SELECT @opval AS "${seqName}";`);
             if (data.length) {
                 return data[0][seqName];
@@ -957,7 +965,7 @@ class SqlServerORM {
             }
         }
 
-        let data = await dbo.sql(`select NEXT VALUE FOR ${this.schemaOwner}.${seqName} as "${seqName}"`);
+        let data = await dbo.sql(`select NEXT VALUE FOR ${this.dbPrefix}${this.schemaOwner}.${seqName} as "${seqName}"`);
         if (data.length) {
             return data[0][seqName];
         }
@@ -1026,7 +1034,7 @@ class SqlServerORM {
                 orderBy = ' ORDER BY ' + orderBys.join(',');
         }
         let result = await dbo.sql(`SELECT ${top} ${this.makeSQLSelector(schema,null,options.fields)} 
-                       FROM ${this.schemaOwner}."${tableName}" with (nolock)
+                       FROM ${this.dbPrefix}${this.schemaOwner}."${tableName}" with (nolock)
                        ${where}
                         ${orderBy} ${offset} ${limit}`);
 
@@ -1050,7 +1058,7 @@ class SqlServerORM {
         if(!Array.isArray(params))
             params = [params];
 
-        let identityInsertSql = (schema._meta.identityInsert)?`SET IDENTITY_INSERT ${dbo.database}.${this.schemaOwner}."${tableName}" ON;`:''
+        let identityInsertSql = (schema._meta.identityInsert)?`SET IDENTITY_INSERT ${this.dbPrefix}${this.schemaOwner}."${tableName}" ON;`:''
 
         if (params.length) { 
             let values = [], fields;
@@ -1066,7 +1074,7 @@ class SqlServerORM {
                 values.push(`(${data.values})`);
             }
 
-            await dbo.sql(`${identityInsertSql}INSERT INTO ${dbo.database}.${this.schemaOwner}."${tableName}" (${fields}) VALUES ${values.join(',')}`);
+            await dbo.sql(`${identityInsertSql}INSERT INTO ${this.dbPrefix}${this.schemaOwner}."${tableName}" (${fields}) VALUES ${values.join(',')}`);
             let results = [];
             if(returnResult){               
                 for(let row of params){
@@ -1092,7 +1100,7 @@ class SqlServerORM {
         //archiving previous     
         //await dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}_History" select * from ${this.schemaOwner}."${tableName}_History" ${where} `)
         let updateSqlStr = this.generateUpdateQueryDataHelper(params, schema);
-        await dbo.sql(`UPDATE ${this.schemaOwner}."${tableName}" 
+        await dbo.sql(`UPDATE ${this.dbPrefix}${this.schemaOwner}."${tableName}" 
                SET                 
                ${updateSqlStr}
                ${where} 
@@ -1113,8 +1121,8 @@ class SqlServerORM {
         if (!where.startsWith('WHERE '))
             throw `Cannot delete without filter criteria`;
         //archiving previous     
-        //await dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}_History" select * from ${this.schemaOwner}."${tableName}_History" ${where} `)
-        return dbo.sql(`DELETE FROM ${this.schemaOwner}."${tableName}" ${where}`);
+        //await dbo.sql(`INSERT INTO ${this.dbPrefix}${this.schemaOwner}."${tableName}_History" select * from ${this.dbPrefix}${this.schemaOwner}."${tableName}_History" ${where} `)
+        return dbo.sql(`DELETE FROM ${this.dbPrefix}${this.schemaOwner}."${tableName}" ${where}`);
     }
 }
 

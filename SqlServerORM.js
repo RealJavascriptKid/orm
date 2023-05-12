@@ -52,7 +52,7 @@ class SqlServerORM {
         if (!this._schemaPath.endsWith('/'))
             this._schemaPath += '/';
 
-        this._sequenceMap = {}
+        
 
         this.validDateFormats = ['MM/DD/YYYY', 'MM/DD/YY', 'M/D/YYYY', 'M/D/YY', 'YYYY-MM-DD'];
         this.validTimeFormats = ['HH:mm:ss', 'HH:mm', 'HHmm', 'HHmmss'];
@@ -60,9 +60,17 @@ class SqlServerORM {
             'MM/DD/YYYY HH:mm', 'MM/DD/YY HH:mm', 'M/D/YYYY HH:mm', 'M/D/YY HH:mm', 'YYYY-MM-DD HH:mm',
             'MM/DD/YYYY HHmm', 'MM/DD/YY HHmm', 'M/D/YYYY HHmm', 'M/D/YY HHmm', 'YYYY-MM-DD HHmm',
             'MM/DD/YYYY HHmmss', 'MM/DD/YY HHmmss', 'M/D/YYYY HHmmss', 'M/D/YY HHmmss', 'YYYY-MM-DD HHmmss'];
-        this._sequenceMap = this._copy(require(`./schemas/sqlserver/${this.dbName.toLowerCase()}/tableSequenceMap.json`)); //used by getSchema utomatically figure out ID fields        
+        this._sequenceMap = this._getTableSequenceMap();
         await this._populateSchema(dbo);
         return this;
+    }
+
+    async _getTableSequenceMap(){
+        try{
+           return  this._copy(require(`./schemas/sqlserver/${this.dbName.toLowerCase()}/tableSequenceMap.json`)); //used by getSchema utomatically figure out ID fields        
+        }catch(ex){
+            return {}
+        }
     }
     
     /** @returns {Promise<void>} */

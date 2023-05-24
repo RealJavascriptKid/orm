@@ -60,7 +60,7 @@ class SqlServerORM {
             'MM/DD/YYYY HH:mm', 'MM/DD/YY HH:mm', 'M/D/YYYY HH:mm', 'M/D/YY HH:mm', 'YYYY-MM-DD HH:mm',
             'MM/DD/YYYY HHmm', 'MM/DD/YY HHmm', 'M/D/YYYY HHmm', 'M/D/YY HHmm', 'YYYY-MM-DD HHmm',
             'MM/DD/YYYY HHmmss', 'MM/DD/YY HHmmss', 'M/D/YYYY HHmmss', 'M/D/YY HHmmss', 'YYYY-MM-DD HHmmss'];
-        this._sequenceMap = this._getTableSequenceMap();
+        this._sequenceMap = await this._getTableSequenceMap();
         await this._populateSchema(dbo);
         return this;
     }
@@ -274,14 +274,14 @@ class SqlServerORM {
     }
     
     /** @returns {string} */
-    getDateTimeFromDateAndTime(dt, t) {
-        if (!dt || !t)
+    getDateTimeFromDateAndTime(d, t) {
+        if (!d || !t)
             return null;
         let dat, time, moment = this.moment;
-        if (dt instanceof Date || dt instanceof moment)
-            dat = moment(dt).format('YYYY-MM-DD');
+        if (d instanceof Date || d instanceof moment)
+            dat = moment(d).format('YYYY-MM-DD');
         else
-            dat = dt;
+            dat = d;
         if (t instanceof Date || t instanceof moment)
             time = moment(t).format('HH:mm:ss');
         else
@@ -402,9 +402,7 @@ class SqlServerORM {
                 else if (fieldValue instanceof moment)
                     return `'${fieldValue.format(fieldModel.format)}'`;
                 else if (fieldValue === 'getdate()' || fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSTIMESTAMP' || fieldValue === 'SYSDATE')
-                    return `${fieldValue}`;
-                else if (fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSTIMESTAMP' || fieldValue === 'SYSDATE')
-                    return `'${moment().format(fieldModel.format)}'`;
+                    return `CURRENT_TIMESTAMP`;                    
                 else if (moment(fieldValue, this.validDateTimeFormats, false).isValid())
                     return `'${moment(fieldValue, this.validDateTimeFormats, false).format(fieldModel.format)}'`;
                 else
@@ -427,14 +425,14 @@ class SqlServerORM {
                     return null;
                 break;
             case 'integer':
-                if (fieldValue == null)
+                if (fieldValue == null || isNaN(fieldValue))
                     return null;
                 else if (typeof fieldValue == 'string' && !fieldValue.trim())
                     return null;
                 return parseInt(fieldValue);
                 break;
             case 'decimal':
-                if (fieldValue == null)
+                if (fieldValue == null || isNaN(fieldValue))
                     return null;
                 else if (typeof fieldValue == 'string' && !fieldValue.trim())
                     return null;
@@ -450,7 +448,7 @@ class SqlServerORM {
                 return `'${(fieldValue) ? 1 : 0}'`;
                 break;
             default: //default should be string
-                if (fieldValue == null)
+                if (fieldValue == null || fieldValue == 'null')
                     return null;
                 return `'${this.escape(fieldValue)}'`;
                 break;
@@ -592,12 +590,46 @@ class SqlServerORM {
     _checkRequiredStatus(prop, val, fieldModel, requiredFails, mode = 'insert') {
         if (mode == 'insert' && fieldModel.requiredOnInsert && !fieldModel.preventInsert) {
             if (val == null || (val === "''" && fieldModel.type === 'string'))
-                requiredFails.push(prop);
+                requiredFails[prop] = true;
         }
         else if (mode == 'update' && fieldModel.requiredOnUpdate && !fieldModel.preventUpdate) {
             if (val == null || (val === "''" && fieldModel.type === 'string'))
-                requiredFails.push(prop);
+                 requiredFails[prop] = true;
         }
+    }
+
+    _getFieldsToReprocessBecauseOfRelatedFields(schema,relatedFields,fieldValuesHash){
+
+        let reprocessFields = {}
+        for(let {prop,fldModel} of relatedFields){
+
+            if(fldModel.type === 'date' || fldModel.type === 'time'){
+                
+                if(fldModel.relatedDateTimeField && typeof fieldValuesHash[fldModel.relatedDateTimeField] === 'string'){                        
+                    reprocessFields[prop] = moment(fieldValuesHash[fldModel.relatedDateTimeField].replaceAll("'",'')).format(fldModel.format)
+                }                     
+            }else if(fldModel.type === 'datetime'){
+                
+                if(fldModel.relatedDateField && typeof fieldValuesHash[fldModel.relatedDateField] === 'string'
+                   && fldModel.relatedTimeField && typeof fieldValuesHash[fldModel.relatedTimeField] === 'string' ){
+
+                    let relatedDateFieldModel = schema[fldModel.relatedDateField],
+                        relatedTimeFieldModel = schema[fldModel.relatedTiemField];    
+
+                    if(relatedTimeFieldModel && relatedTimeFieldModel){
+
+                        let d = moment(fieldValuesHash[fldModel.relatedDateField].replaceAll("'",''),relatedDateFieldModel.format).format(this.dateFormat),
+                            t = moment(fieldValuesHash[fldModel.relatedTimeField].replaceAll("'",''),relatedTimeFieldModel.format).format(this.timeFormat);
+                     
+                        reprocessFields[prop] = moment(`${d} ${t}`).format(fldModel.format)
+                    }
+                    
+                }                     
+            }                   
+        }
+
+        return reprocessFields;
+
     }
     //reason needed it to gracefully handle nulls and other invalid data types from insert quries 
     //use it for complex insert statments For rudementary inserts with less fields I would prefer
@@ -607,16 +639,24 @@ class SqlServerORM {
     generateInsertQueryDataHelper(params, schema) {
         let obj = this._copy(params);
         let fields = [], values = [];
-        let val = '', fieldModel, requiredFails = [], hasNVP = false;
-        let processField = (prop) => {
+        let val = '', fieldModel, requiredFails = {}, hasNVP = false,relatedFields = [],fieldValuesHash = {};
+
+        let processField = (prop,isReprocessing = false) => {
             if (typeof fieldModel === 'string')
                 fieldModel = { type: fieldModel };
             val = this._readWithSchema(val, obj, fieldModel);
-            this._checkRequiredStatus(prop, val, fieldModel, requiredFails, 'insert');
+            this._checkRequiredStatus(prop, val, fieldModel,requiredFails, 'insert');            
+
             if (val == null) {
+                if(isReprocessing == false && (fieldModel.relatedDateField || fieldModel.relatedTimeField || fieldModel.relatedDateTimeField)){ //if there is any relatedFields then add it to array to process later
+                    relatedFields.push({prop,fldModel:fieldModel});
+                }
                 delete obj[prop]; //null will be discarded
                 return;
             }
+            
+            fieldValuesHash[prop] = val;
+
             values.push(val);
             fields.push(`"${prop}"`);
         };
@@ -658,6 +698,22 @@ class SqlServerORM {
                 processField(prop);
             }
         }
+
+        if(relatedFields.length && schema){  //if there are potential related fields
+
+           let fieldsToReprocess = this._getFieldsToReprocessBecauseOfRelatedFields(schema,relatedFields,fieldValuesHash)
+
+           for (let prop in fieldsToReprocess) {
+
+                if(prop == '_meta')
+                    continue;
+                delete requiredFails[prop];
+                val = fieldsToReprocess[prop];
+                fieldModel = schema[prop];
+                processField(prop,true);
+            }
+        }
+        requiredFails = Object.keys(requiredFails);
         if (requiredFails.length) {
             throw {
                 code: 'MISSING_REQUIRED_PARAM',
@@ -674,18 +730,26 @@ class SqlServerORM {
     generateUpdateQueryDataHelper(params, schema) {
         let obj = this._copy(params);
         let updateSqlStr = '';
-        let val = '', fieldModel, requiredFails = [];
-        let processField = (prop) => {
+        let val = '', fieldModel, requiredFails = [],relatedFields = [],fieldValuesHash = {};
+        let processField = (prop,isReprocessing = false) => {
             if (typeof fieldModel === 'string')
                 fieldModel = { type: fieldModel };
             val = this._readWithSchema(val, obj, fieldModel, 'update');
-            this._checkRequiredStatus(prop, val, fieldModel, requiredFails, 'update');
+            this._checkRequiredStatus(prop, val, fieldModel,requiredFails, 'update');
             if (val == null) {
+
+                if(isReprocessing == false && (fieldModel.relatedDateField || fieldModel.relatedTimeField || fieldModel.relatedDateTimeField)){ //if there is any relatedFields then add it to array to process later
+                    relatedFields.push({prop,fldModel:fieldModel});
+                }
+
                 delete obj[prop]; //null will be discarded
                 return;
             }
             if (updateSqlStr.length)
                 updateSqlStr += ', ';
+            
+            fieldValuesHash[prop] = val;                
+
             updateSqlStr += ` "${prop}" = ${val} `;
         };
         if (schema) {
@@ -726,6 +790,25 @@ class SqlServerORM {
                 processField(prop);
             }
         }
+
+        if(relatedFields.length && schema){  //if there are potential related fields
+
+           let fieldsToReprocess = this._getFieldsToReprocessBecauseOfRelatedFields(schema,relatedFields,fieldValuesHash)
+
+           for (let prop in fieldsToReprocess) {
+
+                if(prop == '_meta')
+                    continue;
+
+                delete requiredFails[prop];
+                val = fieldsToReprocess[prop];
+                fieldModel = schema[prop];
+                processField(prop,true);
+            }
+        }
+
+        requiredFails = Object.keys(requiredFails);
+
         if (requiredFails.length) {
             throw {
                 code: 'MISSING_REQUIRED_PARAM',
@@ -733,6 +816,7 @@ class SqlServerORM {
                 data: requiredFails
             };
         }
+
         return updateSqlStr;
     }
     

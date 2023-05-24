@@ -56,7 +56,7 @@ class ProgressORM {
             'MM/DD/YYYY HH:mm', 'MM/DD/YY HH:mm', 'M/D/YYYY HH:mm', 'M/D/YY HH:mm', 'YYYY-MM-DD HH:mm',
             'MM/DD/YYYY HHmm', 'MM/DD/YY HHmm', 'M/D/YYYY HHmm', 'M/D/YY HHmm', 'YYYY-MM-DD HHmm',
             'MM/DD/YYYY HHmmss', 'MM/DD/YY HHmmss', 'M/D/YYYY HHmmss', 'M/D/YY HHmmss', 'YYYY-MM-DD HHmmss'];
-        this._sequenceMap = this._getTableSequenceMap();
+        this._sequenceMap = await this._getTableSequenceMap();
         await this._populateSchema(dbo);
         return this;
     }
@@ -311,7 +311,7 @@ class ProgressORM {
         //for instance {value:"2.3",type:"decimal"} then we will return parseFloat(fieldModel.value)
         //example 2 {value}
         if (mode == 'insert' && fieldModel.insertSequence && (fieldValue == null || fieldModel.preventInsert)) {
-            return `(Select ${this.dbPrefix}${this.schemaOwner}."${fieldModel.insertSequence}".NextVal As '${fieldModel.insertSequence}' From SysProgress.Syscalctable)`;
+            return `(Select ${this.schemaOwner}."${fieldModel.insertSequence}".NextVal As '${fieldModel.insertSequence}' From SysProgress.Syscalctable)`;
         }
         if (fieldModel.preventUpdate && mode == 'update')
             return null;
@@ -374,8 +374,8 @@ class ProgressORM {
                 }
                 else if (fieldValue instanceof moment)
                     return `${quote}${fieldValue.format(fieldModel.format)}${quote}`;
-                else if (fieldValue === 'SYSTIMESTAMP' || fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSDATE')
-                    return `${fieldValue}`;
+                else if (fieldValue === 'getdate()' || fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSTIMESTAMP' || fieldValue === 'SYSDATE')
+                    return `SYSTIMESTAMP`;                
                 else if (moment(fieldValue, this.validDateTimeFormats, false).isValid())
                     return `${quote}${moment(fieldValue, this.validDateTimeFormats, false).format(fieldModel.format)}${quote}`;
                 else
@@ -398,14 +398,14 @@ class ProgressORM {
                     return null;
                 break;
             case 'integer':
-                if (fieldValue == null)
+                if (fieldValue == null || isNaN(fieldValue))
                     return null;
                 else if (typeof fieldValue == 'string' && !fieldValue.trim())
                     return null;
                 return parseInt(fieldValue);
                 break;
             case 'decimal':
-                if (fieldValue == null)
+                if (fieldValue == null || isNaN(fieldValue))
                     return null;
                 else if (typeof fieldValue == 'string' && !fieldValue.trim())
                     return null;
@@ -421,7 +421,7 @@ class ProgressORM {
                 return `${quote}${(fieldValue) ? 1 : 0}${quote}`;
                 break;
             default: //default should be string
-                if (fieldValue == null)
+                if (fieldValue == null || fieldValue == 'null')
                     return null;
                 return `${quote}${this.escape(fieldValue)}${quote}`;
                 break;
@@ -549,23 +549,57 @@ class ProgressORM {
     _checkRequiredStatus(prop, val, fieldModel, requiredFails, mode = 'insert') {
         if (mode == 'insert' && fieldModel.requiredOnInsert && !fieldModel.preventInsert) {
             if (val == null || (val === "''" && fieldModel.type === 'string'))
-                requiredFails.push(prop);
+                requiredFails[prop] = true;
         }
         else if (mode == 'update' && fieldModel.requiredOnUpdate && !fieldModel.preventUpdate) {
             if (val == null || (val === "''" && fieldModel.type === 'string'))
-                requiredFails.push(prop);
+                 requiredFails[prop] = true;
         }
     }
     //reason needed it to gracefully handle nulls and other invalid data types from insert quries 
     //use it for complex insert statments For rudementary inserts with less fields I would prefer
     //old school way but it still works
+
+    _getFieldsToReprocessBecauseOfRelatedFields(schema,relatedFields,fieldValuesHash){
+
+        let reprocessFields = {}
+        for(let {prop,fldModel} of relatedFields){
+
+            if(fldModel.type === 'date' || fldModel.type === 'time'){
+                
+                if(fldModel.relatedDateTimeField && typeof fieldValuesHash[fldModel.relatedDateTimeField] === 'string'){                        
+                    reprocessFields[prop] = moment(fieldValuesHash[fldModel.relatedDateTimeField].replaceAll("'",'')).format(fldModel.format)
+                }                     
+            }else if(fldModel.type === 'datetime'){
+                
+                if(fldModel.relatedDateField && typeof fieldValuesHash[fldModel.relatedDateField] === 'string'
+                   && fldModel.relatedTimeField && typeof fieldValuesHash[fldModel.relatedTimeField] === 'string' ){
+
+                    let relatedDateFieldModel = schema[fldModel.relatedDateField],
+                        relatedTimeFieldModel = schema[fldModel.relatedTiemField];    
+
+                    if(relatedTimeFieldModel && relatedTimeFieldModel){
+
+                        let d = moment(fieldValuesHash[fldModel.relatedDateField].replaceAll("'",''),relatedDateFieldModel.format).format(this.dateFormat),
+                            t = moment(fieldValuesHash[fldModel.relatedTimeField].replaceAll("'",''),relatedTimeFieldModel.format).format(this.timeFormat);
+                     
+                        reprocessFields[prop] = moment(`${d} ${t}`).format(fldModel.format)
+                    }
+                    
+                }                     
+            }                   
+        }
+
+        return reprocessFields;
+
+    }
     
     /** @returns {{ fields: any[]; values: any[]; }} */
     generateInsertQueryDataHelper(params, schema) {
         let obj = this._copy(params);
         let fields = [], values = [];
-        let val = '', fieldModel, requiredFails = [];
-        let processField = (prop) => {
+        let val = '', fieldModel, requiredFails = {},relatedFields = [],fieldValuesHash = {};
+        let processField = (prop,isReprocessing = false) => {
             if (prop == 'namevaluepairs')
                 return;
             if (typeof fieldModel === 'string')
@@ -573,6 +607,9 @@ class ProgressORM {
             val = this._readWithSchema(val, obj, fieldModel, 'insert');
             this._checkRequiredStatus(prop, val, fieldModel, requiredFails, 'insert');
             if (val == null) {
+                 if(isReprocessing == false && (fieldModel.relatedDateField || fieldModel.relatedTimeField || fieldModel.relatedDateTimeField)){ //if there is any relatedFields then add it to array to process later
+                    relatedFields.push({prop,fldModel:fieldModel});
+                }
                 delete obj[prop]; //null will be discarded
                 return;
             }
@@ -642,6 +679,24 @@ class ProgressORM {
                 processField(prop);
             }
         }
+
+        if(relatedFields.length && schema){  //if there are potential related fields
+
+            let fieldsToReprocess = this._getFieldsToReprocessBecauseOfRelatedFields(schema,relatedFields,fieldValuesHash)
+ 
+            for (let prop in fieldsToReprocess) {
+ 
+                 if(prop == '_meta')
+                     continue;
+                 delete requiredFails[prop];
+                 val = fieldsToReprocess[prop];
+                 fieldModel = schema[prop];
+                 processField(prop,true);
+             }
+         }
+         requiredFails = Object.keys(requiredFails);
+
+
         if (requiredFails.length) {
             throw {
                 code: 'MISSING_REQUIRED_PARAM',
@@ -658,8 +713,8 @@ class ProgressORM {
     generateUpdateQueryDataHelper(params, schema) {
         let obj = this._copy(params);
         let updateSqlStr = '';
-        let val = '', fieldModel, requiredFails = [];
-        let processField = (prop) => {
+        let val = '', fieldModel, requiredFails = [],relatedFields = [],fieldValuesHash = {};
+        let processField = (prop,isReprocessing = false) => {
             if (prop == 'namevaluepairs')
                 return;
             if (typeof fieldModel === 'string')
@@ -667,11 +722,19 @@ class ProgressORM {
             val = this._readWithSchema(val, obj, fieldModel, 'update');
             this._checkRequiredStatus(prop, val, fieldModel, requiredFails, 'update');
             if (val == null) {
+
+                if(isReprocessing == false && (fieldModel.relatedDateField || fieldModel.relatedTimeField || fieldModel.relatedDateTimeField)){ //if there is any relatedFields then add it to array to process later
+                    relatedFields.push({prop,fldModel:fieldModel});
+                }
+
                 delete obj[prop]; //null will be discarded
                 return;
             }
             if (updateSqlStr.length)
                 updateSqlStr += ', ';
+
+            fieldValuesHash[prop] = val;   
+
             updateSqlStr += ` "${prop}" = ${val} `;
         };
         let processNVPField = (nvpFields) => {
@@ -740,6 +803,25 @@ class ProgressORM {
                 processField(prop);
             }
         }
+
+        if(relatedFields.length && schema){  //if there are potential related fields
+
+            let fieldsToReprocess = this._getFieldsToReprocessBecauseOfRelatedFields(schema,relatedFields,fieldValuesHash)
+ 
+            for (let prop in fieldsToReprocess) {
+ 
+                 if(prop == '_meta')
+                     continue;
+ 
+                 delete requiredFails[prop];
+                 val = fieldsToReprocess[prop];
+                 fieldModel = schema[prop];
+                 processField(prop,true);
+             }
+         }
+ 
+         requiredFails = Object.keys(requiredFails);
+
         if (requiredFails.length) {
             throw {
                 code: 'MISSING_REQUIRED_PARAM',
@@ -747,6 +829,7 @@ class ProgressORM {
                 data: requiredFails
             };
         }
+        
         return updateSqlStr;
     }
     
@@ -1011,7 +1094,7 @@ class ProgressORM {
     
     /** @returns {Promise<any>} */
     async getNextSeq(dbo, seqName) {
-        let data = await dbo.sql(`select ${this.dbPrefix}${this.schemaOwner}."${seqName}".nextVal as "${seqName}" from Sysprogress.Syscalctable`);
+        let data = await dbo.sql(`select ${this.schemaOwner}."${seqName}".nextVal as "${seqName}" from Sysprogress.Syscalctable`);
         if (data.length) {
             return data[0][seqName];
         }

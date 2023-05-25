@@ -125,6 +125,16 @@ class ProgressORM {
                     item = { field: item.field, type: 'integer',defaultValueOnInsert:0, alternatives:['PlantID','plantID','plantid','PLANTID'] };
                     break;
             }
+
+            if(item.relatedDateField)
+                item.relatedDateField = item.relatedDateField.toLowerCase();
+
+            if(item.relatedTimeField)
+                item.relatedTimeField = item.relatedTimeField.toLowerCase();
+
+            if(item.relatedDateTimeField)
+                item.relatedDateTimeField = item.relatedDateTimeField.toLowerCase();
+
             table[item.field.toLowerCase()] = item;
         }
         await this._applySchemaOverrides();
@@ -200,7 +210,18 @@ class ProgressORM {
                     if (typeof override[fieldName] === 'string')
                         override[fieldName] = { type: override[fieldName] };
 
-                    table[fieldName] = { ...table[fieldName], ...override[fieldName] };
+                    let item = override[fieldName]
+
+                    if(item.relatedDateField)
+                        item.relatedDateField = item.relatedDateField.toLowerCase();
+        
+                    if(item.relatedTimeField)
+                        item.relatedTimeField = item.relatedTimeField.toLowerCase();
+        
+                    if(item.relatedDateTimeField)
+                        item.relatedDateTimeField = item.relatedDateTimeField.toLowerCase();
+
+                    table[fieldName] = { ...table[fieldName], ...item };
 
                     if(table[fieldName].alias){ //if there is any alias then make it alternatives
                         if(!Array.isArray(table[fieldName].alternatives))
@@ -562,7 +583,7 @@ class ProgressORM {
 
     _getFieldsToReprocessBecauseOfRelatedFields(schema,relatedFields,fieldValuesHash){
 
-        let reprocessFields = {}
+        let reprocessFields = {},moment = this.moment;
         for(let {prop,fldModel} of relatedFields){
 
             if(fldModel.type === 'date' || fldModel.type === 'time'){
@@ -576,7 +597,7 @@ class ProgressORM {
                    && fldModel.relatedTimeField && typeof fieldValuesHash[fldModel.relatedTimeField] === 'string' ){
 
                     let relatedDateFieldModel = schema[fldModel.relatedDateField],
-                        relatedTimeFieldModel = schema[fldModel.relatedTiemField];    
+                        relatedTimeFieldModel = schema[fldModel.relatedTimeField];    
 
                     if(relatedTimeFieldModel && relatedTimeFieldModel){
 

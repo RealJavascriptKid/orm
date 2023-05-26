@@ -277,8 +277,8 @@ class JsonFileDbORM {
 
     if (typeof fieldValue == "undefined") {
       for (let alt of fieldModel.alternatives) {
-        if (typeof obj[alt] !== "undefined") {
-          fieldValue = obj[alt];
+        if (typeof obj[alt.toLowerCase()] !== "undefined") {
+          fieldValue = obj[alt.toLowerCase()];
           break;
         }
       }

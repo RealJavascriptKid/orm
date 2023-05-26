@@ -122,7 +122,7 @@ class ProgressORM {
                     item = { field: item.field, type: 'datetime', defaultValueOnInsert: 'SYSTIMESTAMP', defaultValueOnUpdate: 'SYSTIMESTAMP', preventSelection: true };
                     break;
                 case 'PlantId':
-                    item = { field: item.field, type: 'integer',defaultValueOnInsert:0, alternatives:['PlantID','plantID','plantid','PLANTID'] };
+                    item = { field: item.field, type: 'integer',defaultValueOnInsert:0 };
                     break;
             }
 
@@ -227,7 +227,7 @@ class ProgressORM {
                         if(!Array.isArray(table[fieldName].alternatives))
                             table[fieldName].alternatives = [];  
 
-                        table[fieldName].alternatives.push(table[fieldName].alias)
+                        table[fieldName].alternatives.push(table[fieldName].alias.toLowerCase())
                     }
                 }
 
@@ -351,8 +351,8 @@ class ProgressORM {
             fieldModel.alternatives = [];
         if (typeof fieldValue == 'undefined') {
             for (let alt of fieldModel.alternatives) {
-                if (typeof obj[alt] !== 'undefined') {
-                    fieldValue = obj[alt];
+                if (typeof obj[alt.toLowerCase()] !== 'undefined') {
+                    fieldValue = obj[alt.toLowerCase()];
                     break;
                 }
             }

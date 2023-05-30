@@ -423,7 +423,7 @@ class SqlServerORM {
                 else if (fieldValue instanceof moment)
                     return `'${fieldValue.format(fieldModel.format)}'`;
                 else if (fieldValue === 'getdate()' || fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSTIMESTAMP' || fieldValue === 'SYSDATE')
-                    return (fieldModel.dbType !== 'datetime')?`'${moment(fieldValue).format(fieldModel.format)}'`:`CURRENT_TIMESTAMP`;  //varchars can be defined as datetime 
+                    return (fieldModel.dbType !== 'datetime')?`'${moment().format(fieldModel.format)}'`:`CURRENT_TIMESTAMP`;  //varchars can be defined as datetime 
                 else if (moment(fieldValue, this.validDateTimeFormats, false).isValid())
                     return `'${moment(fieldValue, this.validDateTimeFormats, false).format(fieldModel.format)}'`;
                 else

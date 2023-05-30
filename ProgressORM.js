@@ -94,8 +94,8 @@ class ProgressORM {
                                     END) as 'type'
                                     ,f."_file-name" as 'table'  
                                     ,fd."_Width" as 'width'                 
-                                    FROM ${this.dbPrefix}${this.schemaOwner}."_field" fd 
-                                    INNER JOIN ${this.dbPrefix}${this.schemaOwner}."_file" f ON fd."_file-recid" = f.ROWID 
+                                    FROM ${this.schemaOwner}."_field" fd 
+                                    INNER JOIN ${this.schemaOwner}."_file" f ON fd."_file-recid" = f.ROWID 
                                     WHERE f."_Hidden" = 0 
                                     order by  f."_file-name"
                                     with (nolock)`);

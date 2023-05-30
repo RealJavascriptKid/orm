@@ -396,7 +396,7 @@ class ProgressORM {
                 else if (fieldValue instanceof moment)
                     return `${quote}${fieldValue.format(fieldModel.format)}${quote}`;
                 else if (fieldValue === 'getdate()' || fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSTIMESTAMP' || fieldValue === 'SYSDATE')
-                    return `SYSTIMESTAMP`;                
+                    return (fieldModel.dbType !== 'datetime')?moment().format(fieldModel.format):`SYSTIMESTAMP`;  //varchars can be defined as datetime            
                 else if (moment(fieldValue, this.validDateTimeFormats, false).isValid())
                     return `${quote}${moment(fieldValue, this.validDateTimeFormats, false).format(fieldModel.format)}${quote}`;
                 else

@@ -140,14 +140,14 @@ class SqlServerORM {
             }
             switch (item.field) {
                 case 'CreateDateTime':
-                    item = { field: item.field, type: 'datetime', defaultValueOnInsert: 'CURRENT_TIMESTAMP', preventUpdate: true, preventSelection: true };
+                    item = {  ...item, type: 'datetime', defaultValueOnInsert: 'CURRENT_TIMESTAMP', preventUpdate: true, preventSelection: true };
                     break;
                 case 'ModifyDateTime':
                 case 'ChangeDT':
-                    item = { field: item.field, type: 'datetime', defaultValueOnInsert: 'CURRENT_TIMESTAMP', defaultValueOnUpdate: 'CURRENT_TIMESTAMP', preventSelection: true };
+                    item = {  ...item, type: 'datetime', defaultValueOnInsert: 'CURRENT_TIMESTAMP', defaultValueOnUpdate: 'CURRENT_TIMESTAMP', preventSelection: true };
                     break;
                 case 'PlantId':
-                    item = { field: item.field, type: 'integer',defaultValueOnInsert:0 };
+                    item = {  ...item, type: 'integer',defaultValueOnInsert:0 };
                     break;
             }
 
@@ -423,7 +423,7 @@ class SqlServerORM {
                 else if (fieldValue instanceof moment)
                     return `'${fieldValue.format(fieldModel.format)}'`;
                 else if (fieldValue === 'getdate()' || fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSTIMESTAMP' || fieldValue === 'SYSDATE')
-                    return (fieldModel.dbType !== 'datetime')?moment().format(fieldModel.format):`CURRENT_TIMESTAMP`;  //varchars can be defined as datetime 
+                    return (fieldModel.dbType !== 'datetime')?`'${moment(fieldValue).format(fieldModel.format)}'`:`CURRENT_TIMESTAMP`;  //varchars can be defined as datetime 
                 else if (moment(fieldValue, this.validDateTimeFormats, false).isValid())
                     return `'${moment(fieldValue, this.validDateTimeFormats, false).format(fieldModel.format)}'`;
                 else

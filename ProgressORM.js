@@ -643,6 +643,7 @@ class ProgressORM {
                 NVPObject = this.nvpToObject(obj.namevaluepairs);
             for (let prop in nvpFields) {
                 fieldModel = nvpFields[prop];
+                prop = prop.toLowerCase();
                 val = obj[prop];
                 if (typeof fieldModel === 'string')
                     fieldModel = { type: fieldModel };
@@ -764,6 +765,7 @@ class ProgressORM {
                 NVPObject = this.nvpToObject(obj.namevaluepairs);
             for (let prop in nvpFields) {
                 fieldModel = nvpFields[prop];
+                prop = prop.toLowerCase();
                 val = obj[prop];
                 if (typeof fieldModel === 'string')
                     fieldModel = { type: fieldModel };
@@ -1046,6 +1048,7 @@ class ProgressORM {
                 NVPObject = this.nvpToObject(obj.namevaluepairs);
             for (let prop in nvpFields) {
                 fieldModel = nvpFields[prop];
+                prop = prop.toLowerCase();
                 val = obj[prop];
                 if (typeof fieldModel === 'string')
                     fieldModel = { type: fieldModel };

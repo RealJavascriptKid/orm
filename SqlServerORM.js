@@ -849,9 +849,21 @@ class SqlServerORM {
         if (Array.isArray(schema)) {
             return schema.map(fieldName => `${prefix}"${fieldName}"`).join(',');
         }
-        let fields = [];
-        if(!selectedFields || !Array.isArray(selectedFields))
-                selectedFields = Object.keys(schema)
+        let fields = [],ignorePreventSelect = false;
+
+        if(selectedFields === '*'){
+
+            selectedFields = null;
+            ignorePreventSelect = true
+            selectedFields = Object.keys(schema)
+
+        }else if(Array.isArray(selectedFields)){
+
+            ignorePreventSelect = true
+
+        }else{
+            selectedFields = Object.keys(schema)
+        }              
         
         for (let f of selectedFields) {
             let fieldName = f.toLowerCase();
@@ -866,7 +878,7 @@ class SqlServerORM {
                 continue;
 
             if (typeof type === 'object') {
-                if (type.preventSelection) //means our schema has defined that we don't want this field to apear in select clause
+                if (ignorePreventSelect == false && type.preventSelection) //means our schema has defined that we don't want this field to apear in select clause
                     continue;
 
                 if(type.field)
@@ -1236,6 +1248,39 @@ class SqlServerORM {
         //archiving previous     
         //await dbo.sql(`INSERT INTO ${this.dbPrefix}${this.schemaOwner}."${tableName}_History" select * from ${this.dbPrefix}${this.schemaOwner}."${tableName}_History" ${where} `)
         return dbo.sql(`DELETE FROM ${this.dbPrefix}${this.schemaOwner}."${tableName}" ${where}`);
+    }
+
+     /**
+     * 
+     * @param {string} table  table name 
+     * @param {Object} schemaOverrides  the schema object that we want to overrdie
+     * @param {boolean} [permenant] permenant flag will permenantly change the schema from default
+     * @returns {Object} 
+     */
+     overrideSchema(table,schemaOverrides,permenant = false){
+
+        let srcSchema = this.getSchema(table);
+
+        if(permenant){
+            srcSchema = this._schemas[table.toLowerCase()] 
+        }
+
+        for(let i in schemaOverrides){
+
+            let fieldSchema = srcSchema[i.toLowerCase()]
+            if(fieldSchema == null)
+                continue;
+
+            fieldSchema = {
+                ...fieldSchema,
+                ...schemaOverrides[i]
+            }
+            srcSchema[i.toLowerCase()] = fieldSchema;
+        }
+
+        
+
+        return srcSchema;
     }
 }
 

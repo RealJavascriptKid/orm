@@ -917,6 +917,11 @@ class SqlServerORM {
             equals: 'equals',
             eq: 'equals',
             '=': 'equals',
+            notEqual: 'notEqual',
+            notEquals: 'notEqual',
+            ne: 'notEqual',
+            '!=': 'notEqual',
+            '<>': 'notEqual',
             greaterthan: 'greaterThan',
             gt: 'greaterThan',
             '>': 'greaterThan',
@@ -1008,6 +1013,9 @@ class SqlServerORM {
                 case 'equals':
                     whereSqlStr += ` "${prop}" = ${val} `;
                     break;
+                case 'notEqual':
+                     whereSqlStr += ` "${prop}" != ${val} `;
+                     break;
                 case 'greaterThan':
                     whereSqlStr += ` "${prop}" > ${val} `;
                     break;

@@ -52,6 +52,7 @@ class SqlServerORM {
         if (!this._schemaPath.endsWith('/'))
             this._schemaPath += '/';
 
+        this._schemaPath = path.normalize(this._schemaPath);
         
 
         this.validDateFormats = ['MM/DD/YYYY', 'MM/DD/YY', 'M/D/YYYY', 'M/D/YY', 'YYYY-MM-DD'];
@@ -167,10 +168,7 @@ class SqlServerORM {
 
     async _readDir(dir){
         const fs = require('fs');
-        try{
-            if(!dir.endsWith('/')){
-                dir += '/'
-            }
+        try{           
                 
             let files = fs.readdirSync(dir)
             return files;
@@ -592,7 +590,7 @@ class SqlServerORM {
         let obj = {}; //let obj = JSON.parse(JSON.stringify(params))//copying
         for (let i in params) {
             let val = params[i];
-            let key = i.replaceAll('-','_').toLowerCase();
+            let key = String(i).replaceAll('-','_').toLowerCase();
             if (typeof val === 'object') {
                 if (val instanceof moment)
                     obj[key] = val.clone();

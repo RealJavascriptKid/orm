@@ -50,6 +50,8 @@ class ProgressORM {
         if (!this._schemaPath.endsWith('/'))
             this._schemaPath += '/';
 
+        this._schemaPath = path.normalize(this._schemaPath);
+
         this.validDateFormats = ['MM/DD/YYYY', 'MM/DD/YY', 'M/D/YYYY', 'M/D/YY', 'YYYY-MM-DD'];
         this.validTimeFormats = ['HH:mm:ss', 'HH:mm', 'HHmm', 'HHmmss'];
         this.validDateTimeFormats = ['MM/DD/YYYY HH:mm:ss', 'MM/DD/YY HH:mm:ss', 'M/D/YYYY HH:mm:ss', 'M/D/YY HH:mm:ss', 'YYYY-MM-DD HH:mm:ss',
@@ -143,9 +145,8 @@ class ProgressORM {
     
     async _readDir(dir){
         const fs = require('fs');
-        try{
-            if(!dir.endsWith('/'))
-                dir += '/'
+        try{   
+                     
             let files = fs.readdirSync(dir)
             return files;
         }catch(ex){
@@ -549,7 +550,7 @@ class ProgressORM {
         for (let i in params) {
 
             let val = params[i];           
-            let key = i.toLowerCase();
+            let key = String(i).toLowerCase();
 
             if (typeof val === 'object') {
                 if (val instanceof moment)

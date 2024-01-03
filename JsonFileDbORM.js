@@ -53,9 +53,13 @@ class JsonFileDbORM {
     if(!this._dataPath.endsWith('/'))
         this._dataPath += '/';
 
+    this._dataPath = path.normalize(this._dataPath);
+
     this._schemaPath =  schemaPath || `./schemas/jsonfiledb/${this.dbName.toLowerCase()}/`
     if(!this._schemaPath.endsWith('/'))
         this._schemaPath += '/';
+
+    this._schemaPath = path.normalize(this._schemaPath);
 
     if(this._schemaPath === this._dataPath)
        throw `Schema and Data folders should be seperated`     

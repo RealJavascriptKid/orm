@@ -1,6 +1,12 @@
 
 
-/** */
+/// <reference path="typedefs.d.ts" />
+/// <reference path="../DB/typedefs.d.ts" />
+
+/** 
+ * ORM Class for SqlServer database
+ * 
+*/
 class SqlServerORM {
         
 
@@ -1105,9 +1111,15 @@ class SqlServerORM {
         }
     }
     
-    /** @returns {Promise<any>} */
+     /**
+     * @param {CfsNodeCore.DB} dbo 
+     * @param {string} tableName 
+     * @param {CfsNodeCore.ORM.FilterParams} query 
+     * @param {CfsNodeCore.ORM.ReadOptionsParams} [options]  
+     * @returns {Promise<CfsNodeCore.SqlResult | null>}      
+    */
     async readOne(dbo, tableName, query,options = {}) {
-
+        
         let {schema} = options;
 
         if (!schema)
@@ -1123,9 +1135,16 @@ class SqlServerORM {
         return (result.length) ? result[0] : null;
     }
     
-    /** @returns {Promise<any>} */
+    /**
+     * 
+     * @param {CfsNodeCore.DB} dbo 
+     * @param {string} tableName 
+     * @param {CfsNodeCore.ORM.FilterParams} query 
+     * @param {CfsNodeCore.ORM.ReadOptionsParams} [options] 
+     * @returns {Promise<Array<CfsNodeCore.SqlResult>>}
+     */
     async read(dbo, tableName, query, options = {}) {
-
+       
         let {schema} = options;
 
         if (!schema)

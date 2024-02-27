@@ -30,6 +30,8 @@ class JsonFileDbORM {
     fixNVPs, //CFS NVP fields
     memoryOnly
   }) {
+    const path = require('path')
+    
     if (!dataPath || typeof dataPath !== "string")
       throw `"dataPath" must be provided. It is needed to to read and store database data`;
 

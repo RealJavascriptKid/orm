@@ -607,7 +607,10 @@ class ProgressORM {
                         let d = moment(fieldValuesHash[fldModel.relatedDateField].replaceAll("'",''),relatedDateFieldModel.format).format(this.dateFormat),
                             t = moment(fieldValuesHash[fldModel.relatedTimeField].replaceAll("'",''),relatedTimeFieldModel.format).format(this.timeFormat);
                      
-                        reprocessFields[prop] = moment(`${d} ${t}`).format(fldModel.format)
+                        if(!fldModel.format)    
+                            fldModel.format = this.dateTimeFormat;
+
+                        reprocessFields[prop] = moment(`${d} ${t}`,`${this.dateFormat} ${this.timeFormat}`).format(fldModel.format)
                     }
                     
                 }                     
@@ -637,6 +640,7 @@ class ProgressORM {
                 delete obj[prop]; //null will be discarded
                 return;
             }
+            fieldValuesHash[prop] = val;
             values.push(val);
             fields.push(`"${prop}"`);
         };
@@ -969,9 +973,17 @@ class ProgressORM {
             includesin: 'includes',
             includes: 'includes',
             in: 'includes',
+             //sql statement field is null
+             isnull:'isnull' 
         };
 
         let condition, value = null;
+
+        if(obj === null){
+            condition = 'isnull'
+            value = ''
+            return { condition, value };
+       }
         
         if(Array.isArray(obj)){
             return {
@@ -1061,6 +1073,9 @@ class ProgressORM {
                     break;
                 case 'includes':
                     whereSqlStr += ` "${prop}" IN (${val.join(',')}) `;
+                    break;
+                case 'isnull':
+                    whereSqlStr += ` "${prop}" is null `;
                     break;
             }
         };

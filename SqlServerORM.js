@@ -645,8 +645,11 @@ class SqlServerORM {
 
                         let d = moment(fieldValuesHash[fldModel.relatedDateField].replaceAll("'",''),relatedDateFieldModel.format).format(this.dateFormat),
                             t = moment(fieldValuesHash[fldModel.relatedTimeField].replaceAll("'",''),relatedTimeFieldModel.format).format(this.timeFormat);
-                     
-                        reprocessFields[prop] = moment(`${d} ${t}`).format(fldModel.format)
+
+                        if(!fldModel.format)    
+                            fldModel.format = this.dateTimeFormat;
+
+                        reprocessFields[prop] = moment(`${d} ${t}`,`${this.dateFormat} ${this.timeFormat}`).format(fldModel.format)
                     }
                     
                 }                     
@@ -955,8 +958,17 @@ class SqlServerORM {
             includesin: 'includes',
             includes: 'includes',
             in: 'includes',
+            //sql statement field is null
+            isnull:'isnull' 
         };
         let condition, value = null;
+
+        if(obj === null){
+             condition = 'isnull'
+             value = ''
+             return { condition, value };
+        }
+
 
         if(Array.isArray(obj)){
            return {
@@ -994,20 +1006,21 @@ class SqlServerORM {
                 obj[prop] = val;
                 condition = result.condition;
             }
+
             if (Array.isArray(val)) {
                 if (condition !== 'includes')
                     throw `Invalid value specified in filter. You can only specify array when using 'includes' condition`;
                 let newVal = [];
                 for (let i = 0; i < val.length; i++) {
                     let v = this._readWithSchema(val[i], obj, fieldModel, 'whereclause');
-                    if (v !== null)
+                    if (v != null)
                         newVal.push(v);
                 }
                 val = (newVal.length) ? newVal : null;
             }
             else
                 val = this._readWithSchema(val, obj, fieldModel, 'whereclause');
-            if (val == null) {
+            if (val == undefined) {
                 delete obj[prop]; //null will be discarded
                 return;
             }
@@ -1043,6 +1056,9 @@ class SqlServerORM {
                     break;
                 case 'includes':
                     whereSqlStr += ` "${prop}" IN (${val.join(',')}) `;
+                    break;
+                case 'isnull':
+                    whereSqlStr += ` "${prop}" is null `;
                     break;
             }
         };

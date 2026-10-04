@@ -1,86 +1,265 @@
-# Enterprise ORM for OpenEdge Progress, SQL Server, and JSON Data Stores
+# ORM for OpenEdge Progress, SQL Server, and JSON
 
-`orm` is a mission-critical, schema-aware data access library designed for organizations that depend on reliable persistence across OpenEdge Progress environments and modern enterprise application layers.
+This Node.js library provides a schema-aware data access layer for OpenEdge
+Progress, Microsoft SQL Server, and JSON file storage. It can help modernize
+Progress applications by keeping common data-access calls and filter objects
+consistent while moving data between supported backends.
 
-When your business logic depends on accurate data mapping, stable schema behavior, and platform flexibility, this project provides the foundation for disciplined, production-minded data access. It is built to help teams bridge legacy database systems with modern application architecture without sacrificing control, consistency, or operational confidence.
+## Why use this ORM?
 
-## Why this project matters
+Many long-running Progress applications contain valuable business rules and
+workflows that are expensive to replace all at once. This ORM can help teams
+move that work into a modern application layer incrementally:
 
-OpenEdge Progress remains a cornerstone in many enterprise systems, especially where long-lived operational workflows, regulatory requirements, and mission-critical transactions are involved. In those environments, poor data mapping or fragile schema handling can have real business consequences.
+- Describe filters and common reads/updates as JavaScript objects.
+- Let the selected ORM build backend-specific SQL for supported operations.
+- Keep the same table-oriented API when working with Progress and SQL Server.
+- Use schema metadata and optional overrides to map and normalize fields.
+- Use a JSON-backed implementation for lightweight storage or development.
 
-This project helps address that challenge by offering:
-
-- Strong schema awareness across database metadata and application-level overrides
-- Consistent field typing for dates, booleans, integers, decimals, and strings
-- Safe handling of sequence-driven identity patterns
-- Support for multiple persistence backends in one cohesive design
-- A practical structure for teams managing enterprise data responsibly
-
-In other words, this is not just a convenience layer. It is an important building block for dependable, high-integrity data access in critical systems.
-
-## Core capabilities
-
-- OpenEdge Progress ORM support with schema discovery and override management
-- SQL Server ORM support for structured relational workflows
-- JSON file-backed ORM support for lightweight and portable implementations
-- Automatic normalization of common field types and values
-- Schema override support for custom business logic and dataset shaping
-- Sequence and default-value handling to reduce operational drift
+The goal is to keep the **application-facing data-access style** familiar and
+consistent—not to execute Progress ABL or automatically translate arbitrary
+ABL statements, stored procedures, or hand-written SQL. Database schemas,
+connection adapters, and backend-specific behavior still need to be configured
+and tested as part of a migration.
 
 ## Supported backends
 
-- OpenEdge Progress
-- Microsoft SQL Server
-- JSON file database storage
-
-## Project purpose
-
-This repository is meant to support enterprise applications that need a practical and maintainable way to interact with structured data sources. Whether the environment is a classic Progress system, a SQL Server data tier, or a lightweight JSON persistence layer, the project is designed to provide a stable, structured data abstraction that keeps application code cleaner and more resilient.
+| Backend | ORM class | Notes |
+| --- | --- | --- |
+| OpenEdge Progress | `ProgressORM` | Reads schema metadata through the supplied database adapter. |
+| Microsoft SQL Server | `SqlServerORM` | Reads SQL Server schema metadata through the supplied database adapter. |
+| JSON files | `JsonFileDbORM` | Stores data locally and does not require a SQL adapter. |
 
 ## Installation
 
+Clone this repository, then install its dependencies:
+
 ```bash
+git clone https://github.com/RealJavascriptKid/orm.git
+cd orm
 npm install
 ```
 
-## Quick start
+The package entry point exports all three ORM classes:
+
+```js
+const { ProgressORM, SqlServerORM, JsonFileDbORM } = require('./index');
+```
+
+## SQL database setup
+
+The SQL-backed ORMs expect a `dbo` adapter with a `sql(query)` method. Supply
+your existing database connection/query layer; this package does not create or
+manage the connection for you. The adapter's `sql` method must return query
+results in the format expected by your database driver.
 
 ```js
 const { ProgressORM } = require('./index');
 
-const orm = new ProgressORM({
-  dbName: 'inven',
-  dbo: {
-    sql: async (query) => {
-      // Connect this to your OpenEdge Progress or SQL execution layer
-      return [];
-    }
-  },
-  schemaOwner: 'PUB'
-});
+// Replace this with your application's OpenEdge database adapter.
+const dbo = {
+  database: 'inven',
+  sql: async (query) => {
+    // Execute query with your driver and return its rows.
+    return databaseClient.query(query);
+  }
+};
 
-orm.then(instance => {
-  console.log('OpenEdge Progress schema initialized successfully');
-  console.log(instance.getAllSchema());
-}).catch(err => {
-  console.error('ORM initialization failed:', err);
+async function main() {
+  const db = await new ProgressORM({
+    dbName: 'inven',
+    dbo,
+    schemaOwner: 'PUB'
+  });
+
+  console.log(db.getAllSchema());
+}
+
+main().catch(console.error);
+```
+
+`ProgressORM` and `SqlServerORM` initialize asynchronously because they load
+schema metadata. Await construction before using the ORM. For SQL-backed calls,
+pass the adapter as the first argument to methods such as `read`, `insert`,
+`update`, and `remove`.
+
+For SQL Server, use the same adapter pattern with `SqlServerORM`:
+
+```js
+const { SqlServerORM } = require('./index');
+
+async function main() {
+  const db = await new SqlServerORM({
+    dbName: 'Sales',
+    dbo,                 // Your SQL Server adapter
+    schemaOwner: 'dbo'
+  });
+}
+
+main().catch(console.error);
+```
+
+## Reading data and generating queries
+
+For supported filters, the ORM converts a table name, filter object, and
+optional read settings into a backend-specific SQL query, then executes it
+through `dbo.sql`. For example:
+
+```js
+const customers = await db.read(dbo, 'Customer', {
+  State: 'NC'
+}, {
+  limit: 20,
+  sort: { field: 'CustName', dir: 'asc' }
 });
 ```
 
-This pattern is especially valuable in OpenEdge Progress environments where schema metadata and data typing are central to system correctness.
+The filter is expressed using JavaScript data rather than embedding a SQL
+`WHERE` clause. Common operators include equality (the default), comparisons,
+`in`, and pattern matching:
 
-## Typical use cases
+```js
+// Equivalent to State = 'NC'
+const inNorthCarolina = await db.read(dbo, 'Customer', { State: 'NC' });
 
-- Legacy enterprise applications built on OpenEdge Progress
-- Business systems requiring controlled schema mapping
-- Integration layers that need to abstract database-specific details
-- Data-heavy applications that require consistency, structure, and portability
+// State is NC or SC
+const inSelectedStates = await db.read(dbo, 'Customer', {
+  State: { in: ['NC', 'SC'] }
+});
 
-## Operational confidence
+// Customer name contains "Farm"
+const matchingNames = await db.read(dbo, 'Customer', {
+  CustName: { '%like%': 'Farm' }
+});
 
-The value of this project is greatest when data reliability matters most: inventory systems, financial processing, operational workflows, and business-critical application layers where data integrity cannot be left to chance.
+// Return one matching record, or null if none is found
+const customer = await db.readOne(dbo, 'Customer', { CustNum: 1001 });
+```
 
-With OpenEdge Progress support at the center, this library is positioned as a serious tool for teams that need dependable persistence infrastructure and a clean path toward modernized application design.
+Pagination and sorting can be passed as read options:
+
+```js
+const pageOfOrders = await db.read(dbo, 'OrderHeader', {
+  CustNum: 1001
+}, {
+  limit: 25,
+  offset: 50,
+  sort: [
+    { field: 'OrderDate', dir: 'desc' },
+    { field: 'OrdNum', dir: 'asc' }
+  ]
+});
+```
+
+`take` and `skip` are aliases for `limit` and `offset`. Sorting can also be a
+field name or an array of field names.
+
+> The SQL ORMs generate and execute queries through the adapter; they do not
+> expose a separate public method for returning an unexecuted SQL string.
+
+## Inserting, updating, and removing records
+
+The SQL-backed ORM methods use the supplied schema to build statements and
+normalize supported values:
+
+```js
+await db.insert(dbo, 'Customer', {
+  CustNum: 1001,
+  CustName: 'Example Farms',
+  State: 'NC'
+});
+
+await db.update(
+  dbo,
+  'Customer',
+  { State: 'SC' },       // Values to change
+  { CustNum: 1001 }      // Filter for records to update
+);
+
+await db.remove(dbo, 'Customer', { CustNum: 1001 });
+```
+
+Always provide a filter when calling `update` or `remove`; these operations
+reject missing or invalid filter criteria to help prevent accidental
+whole-table changes. The `returnResult: true` option on `insert` and `update`
+can also request matching records back.
+
+## Keeping data-access syntax consistent during migration
+
+The same filter and table-oriented method style can be used with either SQL
+backend. For example, after configuring the corresponding adapter and schema,
+the application-level query can remain the same:
+
+```js
+const filter = {
+  State: { in: ['NC', 'SC'] },
+  CustNum: { '>=': 1000 }
+};
+
+// Progress-backed application
+const progressCustomers = await progressDb.read(progressDbo, 'Customer', filter);
+
+// SQL Server-backed application
+const sqlServerCustomers = await sqlServerDb.read(sqlServerDbo, 'Customer', filter);
+```
+
+This can reduce database-specific query code in an application, but it does
+not make two database schemas identical. Plan for schema mapping, data
+conversion, unsupported database features, and validation of the generated
+queries during a port.
+
+## JSON file storage
+
+`JsonFileDbORM` uses a different constructor and does not take a SQL adapter:
+
+```js
+const { JsonFileDbORM } = require('./index');
+
+async function main() {
+  const db = await new JsonFileDbORM({
+    dbName: 'demo',
+    dataPath: './data/demo'
+  });
+
+  await db.insert('Customer', {
+    CustNum: 1001,
+    CustName: 'Example Farms',
+    State: 'NC'
+  });
+
+  const customers = await db.read('Customer', { State: 'NC' });
+  console.log(customers);
+}
+
+main().catch(console.error);
+```
+
+Unlike the SQL-backed ORMs, JSON methods do not take `dbo` as an argument.
+JSON storage is useful for lightweight use cases, but it is not a replacement
+for a relational database when relational database behavior is required.
+
+## Schema and field handling
+
+The SQL ORMs discover schema metadata during initialization. Schema information
+is available with `getSchema(tableName)` and `getAllSchema()`. The ORM includes
+handling for common field types such as dates, times, booleans, integers,
+decimals, and strings, as well as schema overrides for application-specific
+mapping and defaults.
+
+Use the schema that corresponds to the target database, and verify field names,
+types, sequence behavior, and defaults when moving an application between
+backends.
+
+## Important considerations
+
+- Configure and manage the database connection and `dbo.sql` adapter in your
+  application.
+- Filter values in the examples must match real schema field names.
+- Use the supported object filter operators rather than assuming arbitrary
+  SQL or Progress ABL expressions will be translated.
+- Test generated operations against a development database before using them
+  in production.
 
 ## License
 

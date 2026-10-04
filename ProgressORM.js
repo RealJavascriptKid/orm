@@ -539,9 +539,7 @@ class ProgressORM {
             }
             FinalNVP[prop] = fieldValue;
         }
-        obj = Object.assign(obj, FinalNVP);
-        // if(!['OrderHeader','OrderDetail','PalletHeader'].includes(schemaName)) //because order header has too man NVP fields that are NOT used in Nimbus
-        //     delete obj.NameValuePairs;
+        obj = Object.assign(obj, FinalNVP);       
         return obj;
     }
     
@@ -1166,11 +1164,11 @@ class ProgressORM {
     
      /**
       * 
-     * @param {CfsNodeCore.DB} dbo 
+     * @param {DBSchemaCore.DB} dbo 
      * @param {string} tableName 
-     * @param {CfsNodeCore.ORM.FilterParams} query 
-     * @param {CfsNodeCore.ORM.ReadOptionsParams} [options]  
-     * @returns {Promise<CfsNodeCore.SqlResult | null>}      
+     * @param {DBSchemaCore.ORM.FilterParams} query 
+     * @param {DBSchemaCore.ORM.ReadOptionsParams} [options]  
+     * @returns {Promise<DBSchemaCore.SqlResult | null>}      
     */
     async readOne(dbo, tableName, query, options = {}) {
         
@@ -1191,11 +1189,11 @@ class ProgressORM {
     
      /**
      * 
-     * @param {CfsNodeCore.DB} dbo 
+     * @param {DBSchemaCore.DB} dbo 
      * @param {string} tableName 
-     * @param {CfsNodeCore.ORM.FilterParams} query 
-     * @param {CfsNodeCore.ORM.ReadOptionsParams} [options] 
-     * @returns {Promise<Array<CfsNodeCore.SqlResult>>}
+     * @param {DBSchemaCore.ORM.FilterParams} query 
+     * @param {DBSchemaCore.ORM.ReadOptionsParams} [options] 
+     * @returns {Promise<Array<DBSchemaCore.SqlResult>>}
      */
     async read(dbo, tableName, query, options = {}) {
         

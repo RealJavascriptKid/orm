@@ -1128,11 +1128,11 @@ class SqlServerORM {
     }
     
      /**
-     * @param {CfsNodeCore.DB} dbo 
+     * @param {DBSchemaCore.DB} dbo 
      * @param {string} tableName 
-     * @param {CfsNodeCore.ORM.FilterParams} query 
-     * @param {CfsNodeCore.ORM.ReadOptionsParams} [options]  
-     * @returns {Promise<CfsNodeCore.SqlResult | null>}      
+     * @param {DBSchemaCore.ORM.FilterParams} query 
+     * @param {DBSchemaCore.ORM.ReadOptionsParams} [options]  
+     * @returns {Promise<DBSchemaCore.SqlResult | null>}      
     */
     async readOne(dbo, tableName, query,options = {}) {
         
@@ -1153,11 +1153,11 @@ class SqlServerORM {
     
     /**
      * 
-     * @param {CfsNodeCore.DB} dbo 
+     * @param {DBSchemaCore.DB} dbo 
      * @param {string} tableName 
-     * @param {CfsNodeCore.ORM.FilterParams} query 
-     * @param {CfsNodeCore.ORM.ReadOptionsParams} [options] 
-     * @returns {Promise<Array<CfsNodeCore.SqlResult>>}
+     * @param {DBSchemaCore.ORM.FilterParams} query 
+     * @param {DBSchemaCore.ORM.ReadOptionsParams} [options] 
+     * @returns {Promise<Array<DBSchemaCore.SqlResult>>}
      */
     async read(dbo, tableName, query, options = {}) {
        

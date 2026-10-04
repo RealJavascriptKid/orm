@@ -1,5 +1,5 @@
 
-namespace CfsNodeCore.ORM{
+namespace DBSchemaCore.ORM{
 
     interface Dictionary<T> {
         [key: string]: T;
@@ -10,7 +10,7 @@ namespace CfsNodeCore.ORM{
         /** 
          *  ```
          *    let where = {State:{'=':'NC'}}; // The shortform is {State:'NC'}
-         *    let customers = await inven.read('Customer',where)
+         *    let customers = await sales.read('Customer',where)
          * 
          *  ```
          * */       
@@ -20,7 +20,7 @@ namespace CfsNodeCore.ORM{
           * Example Return Customers where State is not NC
          *  ```
          *    let where = {State:{'!=':'NC'}};  
-         *    let customers = await inven.read('Customer',where)
+         *    let customers = await sales.read('Customer',where)
          * 
          *  ```
          * */    
@@ -30,67 +30,67 @@ namespace CfsNodeCore.ORM{
           * Example Return Customers where State is not NC
          *  ```
          *    let where = {State:{'<>':'NC'}};  
-         *    let customers = await inven.read('Customer',where)
+         *    let customers = await sales.read('Customer',where)
          * 
          *  ```
          * */   
         '<>'?: genericType,
 
          /** 
-          * Example Return Customers where Plants are more than 3
+          * Example Return Customers where Orders are more than 3
          *  ```
-         *    let where = {Plants:{'>':3}}; 
-         *    let customers = await inven.read('Customer',where)
+         *    let where = {Orders:{'>':3}}; 
+         *    let customers = await sales.read('Customer',where)
          * 
          *  ```
          * */   
         '>'?: genericType,     
         
          /** 
-          * Example Return Customers where Plants are less than 3
+          * Example Return Customers where Orders are less than 3
          *  ```
-         *    let where = {Plants:{'<':3}}; 
-         *    let customers = await inven.read('Customer',where)
+         *    let where = {Orders:{'<':3}}; 
+         *    let customers = await sales.read('Customer',where)
          * 
          *  ```
          * */   
         '<'?: genericType,   
         
          /** 
-          * Example Return Customers where Customer has 3 or more Plants
+          * Example Return Customers where Customer has 3 or more Orders
          *  ```
-         *    let where = {Plants:{'>=':3}}; 
-         *    let customers = await inven.read('Customer',where)
+         *    let where = {Orders:{'>=':3}}; 
+         *    let customers = await sales.read('Customer',where)
          * 
          *  ```
          * */   
         '>='?: genericType,
 
         /** 
-         * Example Return Customers where Customer has 3 or more Plants
+         * Example Return Customers where Customer has 3 or more Orders
          *  ```
-         *    let where = {Plants:{'=>':3}}; 
-         *    let customers = await inven.read('Customer',where)
+         *    let where = {Orders:{'=>':3}}; 
+         *    let customers = await sales.read('Customer',where)
          * 
          *  ```
          * */   
         '=>'?: genericType, 
         
          /** 
-          * Example Return Customers where Customer has 3 or less Plants
+          * Example Return Customers where Customer has 3 or less Orders
          *  ```
-         *    let where = {Plants:{'<=':3}}; 
-         *    let customers = await inven.read('Customer',where)
+         *    let where = {Orders:{'<=':3}}; 
+         *    let customers = await sales.read('Customer',where)
          * 
          *  ```
          * */   
         '<='?: genericType,
 
          /** 
-          * Example Return Customers where Customer has 3 or less Plants
+          * Example Return Customers where Customer has 3 or less Orders
          *  ```
-         *    let where = {Plants:{'=<':3}}; 
-         *    let customers = await inven.read('Customer',where)
+         *    let where = {Orders:{'=<':3}}; 
+         *    let customers = await sales.read('Customer',where)
          * 
          *  ```
          * */   
@@ -100,7 +100,7 @@ namespace CfsNodeCore.ORM{
           * Example Return Customers where name starts with "Egg"
          *  ```
          *    let where = {CustName:{'%like':'Egg'}}; 
-         *    let customers = await inven.read('Customer',where)
+         *    let customers = await sales.read('Customer',where)
          * 
          *  ```
          * */   
@@ -110,7 +110,7 @@ namespace CfsNodeCore.ORM{
           * Example Return Customers where name ends with "Egg"
          *  ```
          *    let where = {CustName:{'like%':'Egg'}}; 
-         *    let customers = await inven.read('Customer',where)
+         *    let customers = await sales.read('Customer',where)
          * 
          *  ```
          * */   
@@ -120,7 +120,7 @@ namespace CfsNodeCore.ORM{
           * Example Return Customers where name contains word "Egg"
          *  ```
          *    let where = {CustName:{'%like%':'Egg'}}; 
-         *    let customers = await inven.read('Customer',where)
+         *    let customers = await sales.read('Customer',where)
          * 
          *  ```
          * */   
@@ -132,14 +132,14 @@ namespace CfsNodeCore.ORM{
          * Example 1)
          *  ```
          *    let where = {CustName:{'in':['NC','SC','GA','NY']}}; 
-         *    let customers = await inven.read('Customer',where)
+         *    let customers = await sales.read('Customer',where)
          * 
          *  ```
          * 
          *  Example 2)
          *  ```
          *    let where = {CustName:['NC','SC','GA','NY']}; //The shorthand way 
-         *    let customers = await inven.read('Customer',where)
+         *    let customers = await sales.read('Customer',where)
          * 
          *  ```
          * */   
@@ -175,7 +175,7 @@ namespace CfsNodeCore.ORM{
         /** Limits the number of records to return
          * @example
          ```
-             let  topThreeOrders = await inven.read('OrderHeader',{ CustNum:'1' },{ limit:3 })
+             let  topThreeOrders = await sales.read('Customer',{ id:'1' },{ limit:3 })
          ```
          * 
          */
@@ -187,7 +187,7 @@ namespace CfsNodeCore.ORM{
          *  Limits the number of records to return. Same as "limit". It is used to support kendo pagination
          * @example
          ```
-             let  topThreeOrders = await inven.read('OrderHeader',{ CustNum:'1' },{ take:3 })
+             let  topThreeOrders = await sales.read('Customer',{ id:'1' },{ take:3 })
          ```
          */
         take?:number;
@@ -195,7 +195,7 @@ namespace CfsNodeCore.ORM{
         /** Offsets.paginates the number of records to return
          * @example
          ```
-             let  threeProductsOnSecondPage = await inven.read('Product',{ProdType:'Egg'},{ limit:3,offset:2 })
+             let  threeProductsOnSecondPage = await sales.read('Product',{ProdType:'Egg'},{ limit:3,offset:2 })
          ```
          * 
          */
@@ -207,7 +207,7 @@ namespace CfsNodeCore.ORM{
           *  Offsets.paginates the number of records to return. Same as "offset". It is used to support kendo pagination
           * @example
          ```
-             let  threeProductsOnSecondPage = await inven.read('Product',{ProdType:'Egg'},{ take:3,skip:2 })
+             let  threeProductsOnSecondPage = await sales.read('Product',{ProdType:'Egg'},{ take:3,skip:2 })
          ```
          * 
          */
@@ -218,23 +218,23 @@ namespace CfsNodeCore.ORM{
           * @example
          ```
              //Example 1 - Orders Sorted by OrdNum
-             let  orders = await inven.read('OrderHeader',{ CustNum:'1' },{ sort:'OrdNum' })
+             let  orders = await sales.read('Customer',{ id:'1' },{ sort:'OrdNum' })
 
-             //Example 2 - Orders Sorted by OrdNum and CustNum
-             let  orders2 = await inven.read('OrderHeader',{ CustNum:'1' },{ sort:['OrdNum','CustNum'] })
+             //Example 2 - Orders Sorted by OrdNum and id
+             let  orders2 = await sales.read('Customer',{ id:'1' },{ sort:['OrdNum','id'] })
 
              //Example 3 - Orders Sorted by OrdNum in ascending order
-             let  orders3 = await inven.read('OrderHeader',{ CustNum:'1' },{ sort:{field:'OrdNum',dir:'asc'} })
+             let  orders3 = await sales.read('Customer',{ id:'1' },{ sort:{field:'OrdNum',dir:'asc'} })
 
-             let  orders4 = await inven.read('OrderHeader',{ CustNum:'1' },{ sort:{field:'OrdNum',dir:'1'} })
+             let  orders4 = await sales.read('Customer',{ id:'1' },{ sort:{field:'OrdNum',dir:'1'} })
 
              //Example 4 - Orders Sorted by OrdNum in descending order
-             let  orders5 = await inven.read('OrderHeader',{ CustNum:'1' },{ sort:{field:'OrdNum',dir:'desc'} })
+             let  orders5 = await sales.read('Customer',{ id:'1' },{ sort:{field:'OrdNum',dir:'desc'} })
 
-             let  orders6 = await inven.read('OrderHeader',{ CustNum:'1' },{ sort:{field:'OrdNum',dir:'-1'} })
+             let  orders6 = await sales.read('Customer',{ id:'1' },{ sort:{field:'OrdNum',dir:'-1'} })
 
-             //Example 5 - Orders Sorted by OrdNum in descending order and CustNum in asc
-             let  orders7 = await inven.read('OrderHeader',{ CustNum:'1' },{ sort:[{field:'OrdNum',dir:'-1'},{field:'CustNum':'1'}] })
+             //Example 5 - Orders Sorted by OrdNum in descending order and id in asc
+             let  orders7 = await sales.read('Customer',{ id:'1' },{ sort:[{field:'OrdNum',dir:'-1'},{field:'id':'1'}] })
 
          ```
          * 
@@ -246,14 +246,14 @@ namespace CfsNodeCore.ORM{
           * @example
          ```
              //Example 1 - Get Flat Array
-             let serialnums = await inven.read('Serial',{ PalletNum:'0612345678' },{ flatBy:'SerialNum' })
+             let deliverynumbers = await sales.read('Delivery',{ DeliveryGroup:'12345678' },{ flatBy:'deliverynumber' })
 
-             console.log(serialnums); //should display something like ['061234567801','061234567802','061234567803']
+             console.log(deliverynumbers); //should display something like ['1234567801','1234567802','1234567803']
 
               //Example 2 - Get Singular Value with readOne
-             let palletNum = await inven.readOne('Serial',{ SerialNum:'061234567801' },{ flatBy:'PalletNum' })
+             let delivery = await sales.readOne('Delivery',{ deliverynumber:'1234567801' },{ flatBy:'DeliveryGroup' })
 
-             console.log(palletNum); //should display something like '0612345678'
+             console.log(delivery); //should display something like '12345678'
          ```
          * 
          */
@@ -301,16 +301,16 @@ namespace CfsNodeCore.ORM{
 
         /** Alternative field names if field is not found in data e.g. 
          * ```
-         *  let serialSchemaOverride = {
-         *      SerialNum:{type:'string',requiredOnInsert:true},
-         *      Bloxnum: {type: 'string', alternatives:['BloxNumber']}
+         *  let myOldDataSchema = {
+         *      deliverynumber:{type:'string',requiredOnInsert:true},
+         *      BoxNum: {type: 'string', alternatives:['BoxNumber']}
          *   }
          * 
-         *  let schema = await inven.overrideSchemas('Serial',serialSchemaOverride)
+         *  let schema = await sales.overrideSchemas('Delivery',myOldDataSchema)
          * 
-         *  await inven.insert('Serial',{
+         *  await sales.insert('Delivery',{
          *       ...data,
-         *       BloxNumber:'061234567890'
+         *       BoxNumber:'1234567890'
          *   },{schema}) 
          * 
          * ```

@@ -59,7 +59,7 @@ const { ProgressORM } = require('./index');
 
 // Replace this with your application's OpenEdge database adapter.
 const dbo = {
-  database: 'inven',
+  database: 'sales',
   sql: async (query) => {
     // Execute query with your driver and return its rows.
     return databaseClient.query(query);
@@ -68,7 +68,7 @@ const dbo = {
 
 async function main() {
   const db = await new ProgressORM({
-    dbName: 'inven',
+    dbName: 'sales',
     dbo,
     schemaOwner: 'PUB'
   });
@@ -108,10 +108,10 @@ through `dbo.sql`. For example:
 
 ```js
 const customers = await db.read(dbo, 'Customer', {
-  State: 'NC'
+  state: 'NC'
 }, {
   limit: 20,
-  sort: { field: 'CustName', dir: 'asc' }
+  sort: { field: 'name', dir: 'asc' }
 });
 ```
 
@@ -120,34 +120,34 @@ The filter is expressed using JavaScript data rather than embedding a SQL
 `in`, and pattern matching:
 
 ```js
-// Equivalent to State = 'NC'
-const inNorthCarolina = await db.read(dbo, 'Customer', { State: 'NC' });
+// Equivalent to state = 'NC'
+const inNorthCarolina = await db.read(dbo, 'Customer', { state: 'NC' });
 
-// State is NC or SC
+// state is NC or SC
 const inSelectedStates = await db.read(dbo, 'Customer', {
-  State: { in: ['NC', 'SC'] }
+  state: { in: ['NC', 'SC'] }
 });
 
 // Customer name contains "Farm"
 const matchingNames = await db.read(dbo, 'Customer', {
-  CustName: { '%like%': 'Farm' }
+  name: { '%like%': 'Farm' }
 });
 
 // Return one matching record, or null if none is found
-const customer = await db.readOne(dbo, 'Customer', { CustNum: 1001 });
+const customer = await db.readOne(dbo, 'Customer', { id: 1001 });
 ```
 
 Pagination and sorting can be passed as read options:
 
 ```js
-const pageOfOrders = await db.read(dbo, 'OrderHeader', {
-  CustNum: 1001
+const pageOfOrders = await db.read(dbo, 'Orders', {
+  customerId: 1001
 }, {
   limit: 25,
   offset: 50,
   sort: [
     { field: 'OrderDate', dir: 'desc' },
-    { field: 'OrdNum', dir: 'asc' }
+    { field: 'id', dir: 'asc' }
   ]
 });
 ```
@@ -165,19 +165,19 @@ normalize supported values:
 
 ```js
 await db.insert(dbo, 'Customer', {
-  CustNum: 1001,
-  CustName: 'Example Farms',
-  State: 'NC'
+  id: 1001,
+  name: 'Example Farms',
+  state: 'NC'
 });
 
 await db.update(
   dbo,
   'Customer',
-  { State: 'SC' },       // Values to change
-  { CustNum: 1001 }      // Filter for records to update
+  { state: 'SC' },       // Values to change
+  { id: 1001 }      // Filter for records to update
 );
 
-await db.remove(dbo, 'Customer', { CustNum: 1001 });
+await db.remove(dbo, 'Customer', { id: 1001 });
 ```
 
 Always provide a filter when calling `update` or `remove`; these operations
@@ -193,8 +193,8 @@ the application-level query can remain the same:
 
 ```js
 const filter = {
-  State: { in: ['NC', 'SC'] },
-  CustNum: { '>=': 1000 }
+  state: { in: ['NC', 'SC'] },
+  id: { '>=': 1000 }
 };
 
 // Progress-backed application
@@ -223,12 +223,12 @@ async function main() {
   });
 
   await db.insert('Customer', {
-    CustNum: 1001,
-    CustName: 'Example Farms',
-    State: 'NC'
+    id: 1001,
+    name: 'Example Farms',
+    state: 'NC'
   });
 
-  const customers = await db.read('Customer', { State: 'NC' });
+  const customers = await db.read('Customer', { state: 'NC' });
   console.log(customers);
 }
 

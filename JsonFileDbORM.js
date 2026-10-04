@@ -11,6 +11,7 @@ class JsonFileDbORM {
     this._storage = {};
     this._indexStorage = {}
     this._useIndexes = false; //global flag for using indexes
+    this._memoryOnly = false; //means no schema files or that files
 
     return this._init(opts);
   }
@@ -27,7 +28,10 @@ class JsonFileDbORM {
     jsonSpaces,
     schemaOptions,
     fixNVPs, //CFS NVP fields
+    memoryOnly
   }) {
+    const path = require('path')
+    
     if (!dataPath || typeof dataPath !== "string")
       throw `"dataPath" must be provided. It is needed to to read and store database data`;
 
@@ -43,15 +47,21 @@ class JsonFileDbORM {
     this.dateTimeFormat = dateTimeFormat || "YYYY-MM-DD HH:mm:ss";
     this.timeFormat = timeFormat || "HH:mm:ss";
     this._overrideSchemaStrict = overrideSchemaStrict || false; //if true then after schema is overriden then it will REMOVE fields that are NOT overridden
-  
+    this._memoryOnly = memoryOnly || false;  //if this flag is true the it void schemaPath and dataPath
+
+
 
     this._dataPath = dataPath;
     if(!this._dataPath.endsWith('/'))
         this._dataPath += '/';
 
+    this._dataPath = path.normalize(this._dataPath);
+
     this._schemaPath =  schemaPath || `./schemas/jsonfiledb/${this.dbName.toLowerCase()}/`
     if(!this._schemaPath.endsWith('/'))
         this._schemaPath += '/';
+
+    this._schemaPath = path.normalize(this._schemaPath);
 
     if(this._schemaPath === this._dataPath)
        throw `Schema and Data folders should be seperated`     
@@ -109,13 +119,19 @@ class JsonFileDbORM {
   }
 
 
-  async _populateData(tableName) {
+  async _populateData(tableName,schema,tableData = {}) {
     
-    const path = require('path')
-     
-    let schema  = await this._readFile(path.join(this._schemaPath, `${tableName}.json`));
-   
-    let tableData = await this._readFile(path.join(this._dataPath, `${tableName}.json`));
+    
+      const path = require('path')
+        
+      if(!this._memoryOnly){
+
+            schema  = await this._readFile(path.join(this._schemaPath, `${tableName}.json`));
+          
+            tableData = await this._readFile(path.join(this._dataPath, `${tableName}.json`),'{}');
+
+      }
+    
 
     if(schema){
       
@@ -173,14 +189,18 @@ class JsonFileDbORM {
     return JSON.parse(JSON.stringify(this._schemas))   //we always should return the copy of schema so that it won't get mutated
   }
 
-  async _getSchema(schema) {
+  async getSchema(schema) {
     if(schema === '_meta')
         throw `"_meta" is reserved key cannot use it has tableName`
     if (!this._schemas[schema]){
          await this._populateData(schema)
     } 
-
-    return JSON.parse(JSON.stringify(this._schemas[schema])); //we always should return the copy of schema so that it won't get mutated
+    try{
+      return JSON.parse(JSON.stringify(this._schemas[schema])); //we always should return the copy of schema so that it won't get mutated
+    }catch(ex){
+        return null;
+    }
+    
   }
 
   getDateTimeFromDateAndTime(dt, t) {
@@ -263,8 +283,8 @@ class JsonFileDbORM {
 
     if (typeof fieldValue == "undefined") {
       for (let alt of fieldModel.alternatives) {
-        if (typeof obj[alt] !== "undefined") {
-          fieldValue = obj[alt];
+        if (typeof obj[alt.toLowerCase()] !== "undefined") {
+          fieldValue = obj[alt.toLowerCase()];
           break;
         }
       }
@@ -314,8 +334,6 @@ class JsonFileDbORM {
           fieldValue === "getdate()" ||
           fieldValue === "CURRENT_TIMESTAMP"
         )
-          return `${fieldValue}`;
-        else if (fieldValue === "CURRENT_TIMESTAMP")
           return `${moment().format(fieldModel.format)}`;
         else if (moment(fieldValue, this.validDateTimeFormats, false).isValid())
           return `${moment(fieldValue, this.validDateTimeFormats, false).format(fieldModel.format)}`;
@@ -782,17 +800,24 @@ class JsonFileDbORM {
   }
 
   async readOne(tableName, query) {    
-    let result = await this.read(tableName,query,1);
+    let result = await this.read(tableName,query,{limit:1});
     return result.length ? result[0] : null;
   }
 
-  async read(tableName, query,limit) { 
-    let schema = await this._getSchema(tableName);  
-    let data = await this._read(tableName,query,limit,schema)
+  async read(tableName, query,options = {}) { 
+    options.schema = await this.getSchema(tableName); 
+    
+    if(options.schema === null){
+       return [];
+    }
+
+    let data = await this._read(tableName,query,options)
     return this._cloneResult(data) //we don't want internal data to be mutated by external code
   }
 
-  async _read(tableName,query,limit,schema){
+  async _read(tableName,query,options){
+
+    let {limit,schema} = options;
 
     if(typeof query !== 'object'){  //if query is NOT object then we assume it to be ID field
         let val = query;
@@ -817,9 +842,17 @@ class JsonFileDbORM {
   }
 
   async insert(tableName, params) {
-        let schema = await this._getSchema(tableName);
+        let schema = await this.getSchema(tableName);        
 
         let arr = (Array.isArray(params))?params:[params];
+
+        if(schema === null){  //automatically adds the schema
+           //it means we have to autodetermine schema
+           schema = this.determineSchemaFromData(arr);
+           if(schema){
+              schema = await this.addSchema(tableName,schema)
+           }
+        }
        
        //I can use Promise.all() but for now I'm keeping it this way
        let recordsAdded = [];
@@ -838,11 +871,22 @@ class JsonFileDbORM {
         return this._cloneResult(recordsAdded); //we don't want external progam to mutate our data
   }
 
-  async update(tableName, params, query,limit) {
+  async update(tableName, params, query,options = {}) {
 
-    let schema = await this._getSchema(tableName);
+    let dataToUpdate; 
+    let schema = await this.getSchema(tableName);
+    
+    if(schema === null){
 
-    let dataToUpdate = await this._read(tableName,query,limit,schema);
+        //if schema is null then we want to add insert because there is nothing that exists
+        await this.insert(tableName,params)
+        dataToUpdate = await this._read(tableName,query,options);
+        return this._cloneResult(dataToUpdate)
+    }
+
+    options.schema = schema;
+
+    dataToUpdate = await this._read(tableName,query,options);
 
     let updates = this._updateProcess(params, schema);
 
@@ -860,7 +904,14 @@ class JsonFileDbORM {
 
   async updateAll(tableName, params) {
 
-    let schema = await this._getSchema(tableName);   
+    let schema = await this.getSchema(tableName);   
+
+    if(schema === null){
+
+        //if schema is null then we want to add insert because there is nothing that exists
+        await this.insert(tableName,params)
+        return
+    }
 
     let updates = this._updateProcess(params, schema);
 
@@ -875,11 +926,14 @@ class JsonFileDbORM {
    
   }
 
-  async remove(tableName, query, limit) {
+  async remove(tableName, query, options = {}) {
+        
+    let schema = await this.getSchema(tableName);
+    if(schema === null)
+        return []
+    options.schema = schema;
 
-    let schema = await this._getSchema(tableName);
-
-    let dataToDelete = await this._read(tableName,query,limit,schema);
+    let dataToDelete = await this._read(tableName,query,options);
 
        //TODO address indexes while updateing
     for(let row of dataToDelete){
@@ -972,6 +1026,8 @@ class JsonFileDbORM {
   }
 
   async _writeFile(file,data) {
+    if(this._memoryOnly)
+        return;
       const fs = require('fs')
       return new Promise((res,rej) => {
           fs.writeFile(file, JSON.stringify(data, null, this.jsonSpaces), (err) => {
@@ -981,17 +1037,47 @@ class JsonFileDbORM {
       })  
   }
 
-  async _readFile(file) {
-    const fs = require('fs')
-    return new Promise((res,rej) => {
+  async _readFile(file,defaultFileData) {
+    if(this._memoryOnly)
+        return {};
+    const fs = require('fs'),
+         path = require('path');
+
+    let _read = () => {
+      return new Promise((res,rej) => {
         fs.readFile(file, (err,fileData) => {
-            if (err) return rej(err);            
+            if (err) return rej(err); 
             res(JSON.parse(fileData.toString()));
         });
     })  
+    }
+
+    let _ensure = async (filePath) => {
+      var dirname = path.dirname(filePath);
+      if (fs.existsSync(dirname)) {       
+        return true;        
+      }
+      await _ensure(dirname);
+      fs.mkdirSync(dirname);
+    }
+
+    try{
+       let result = await _read();
+       return result;
+    }catch(ex){
+        await _ensure(file);
+        if(defaultFileData){
+          await this._writeFile(file,JSON.parse(defaultFileData))
+       }
+        return _read()
+    }
+
+   
 }
 
   async commit() {
+      if(this._memoryOnly)
+        return;
       const path = require('path')
       for(let tableName in this._storage){
           await this._writeFile(path.join(this._dataPath, `${tableName}.json`),this._storage[tableName])
@@ -1001,21 +1087,114 @@ class JsonFileDbORM {
   determineSchemaFromData(data){
 
       let params = JSON.parse(JSON.stringify(data));
-      if(params instanceof Array){
-         if(!params.length)
-            return null;
-          params = params[0]
+      if(params != null && !Array.isArray(params)){         
+          params =[params]
       }
 
-      let schema = {}
+      let schema = {},idField = '';
 
-      for(let i in params){
-        schema[i] = this._determineFieldModel(params[i]);
+      for(let param of params){
+
+        for(let i in param){
+
+          if(schema[i] == null)
+            schema[i] = this._determineFieldModel(param[i]);
+
+           if(!idField && i.toLowerCase() === 'id'){
+              idField = i;
+           }
+
+           schema[i].isID = true;
+
+        }
+
+      }  
+      
+      if(schema._meta == null){
+          schema._meta = {
+              
+          }
       }
+
+      //determining id field
+      
 
       return schema;
 
   }
+
+  async addSchema(tableName,schema){
+      const path = require('path')
+
+      let dataExists = false,oldSchema,isNewSchema = false;
+      try{
+
+        oldSchema = await this.getSchema(tableName);  
+        if(oldSchema === null)
+           throw `Schema does not exist`
+        let data = this._storage[tableName]?Object.values(this._storage[tableName]):[];
+        if(data.length)  //if there is data then don't set schema
+          dataExists = true;       
+
+      }catch(ex){
+        oldSchema = {}
+        isNewSchema = true;
+      }
+      
+      if(isNewSchema || !dataExists){
+
+        schema = {...oldSchema,...schema};        
+
+        if(!this._memoryOnly){
+
+          await this._writeFile(path.join(this._schemaPath, `${tableName}.json`),schema) 
+
+        }else{
+
+           await this._populateData(tableName,schema)
+
+        } 
+        return this.getSchema(tableName);  
+      }
+      
+  }
+
+  async removeSchema(tableName){
+      const path = require('path')
+
+      if(!this._schemas[tableName])
+          return;
+
+      this.removeAll(tableName)
+       
+      delete this._schemas[tableName];
+
+      if(!this._memoryOnly)
+        this.rm(path.join(this._schemaPath, `${tableName}.json`)) //deleting schema
+      
+  }
+
+  rm(directoryPath) {
+    var self = this;
+    const fs = require('fs'),
+        path = require('path');
+
+    if (fs.existsSync(directoryPath)) {
+        fs.readdirSync(directoryPath).forEach((file, index) => {
+            const curPath = path.join(directoryPath, file);
+            if (fs.lstatSync(curPath).isDirectory()) {
+                // recurse
+                self.rm(curPath);
+            } else {
+                // delete file
+                fs.unlinkSync(curPath);
+            }
+        });
+        fs.rmdirSync(directoryPath);
+    }
+  }
+
+  
 
 };
 

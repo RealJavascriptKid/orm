@@ -1,4 +1,6 @@
 
+/// <reference path="typedefs.d.ts" />
+/// <reference path="../DB/typedefs.d.ts" />
 
 /**
  *  ORM Class for Progress database
@@ -17,13 +19,20 @@ class ProgressORM {
     
     /** @returns {Promise<ProgressORM>} */
     async _init({ dbName, dbo, //needed for schema gathering
-    schemaOwner, schemaPath, dateFormat, dateTimeFormat, timeFormat, overrideSchemaStrict, schemaOptions }) {
+    schemaOwner, schemaPath, dateFormat, dateTimeFormat, timeFormat, overrideSchemaStrict, schemaOptions, includeDBPrefix }) {
+        const path = require('path')
+
         if (!dbo || typeof dbo !== 'object')
             throw `"dbo" must be provided. It is needed to get schema`;
-        if (!dbName)
-            throw `"dbName" must be provided`;
+       
         this.schemaOwner = schemaOwner || 'PUB';
-        this.dbName = dbName;
+
+        this.dbName = dbName || dbo.database;
+
+        if (!this.dbName)
+            throw `"dbName" must be provided`;
+
+        this.dbPrefix = (includeDBPrefix && dbo.database)?`${dbo.database}.`:'';
         this.type = 'progress';
         this.schemaOptions = schemaOptions || {
             plantid: 0
@@ -37,15 +46,31 @@ class ProgressORM {
         this._schemaPath = schemaPath || `./schemas/progress/${this.dbName.toLowerCase()}/`;
         if (!this._schemaPath.endsWith('/'))
             this._schemaPath += '/';
+            
+        this._schemaPath = path.resolve(this._schemaPath)
+
+        if (!this._schemaPath.endsWith('/'))
+            this._schemaPath += '/';
+
+        this._schemaPath = path.normalize(this._schemaPath);
+
         this.validDateFormats = ['MM/DD/YYYY', 'MM/DD/YY', 'M/D/YYYY', 'M/D/YY', 'YYYY-MM-DD'];
         this.validTimeFormats = ['HH:mm:ss', 'HH:mm', 'HHmm', 'HHmmss'];
         this.validDateTimeFormats = ['MM/DD/YYYY HH:mm:ss', 'MM/DD/YY HH:mm:ss', 'M/D/YYYY HH:mm:ss', 'M/D/YY HH:mm:ss', 'YYYY-MM-DD HH:mm:ss',
             'MM/DD/YYYY HH:mm', 'MM/DD/YY HH:mm', 'M/D/YYYY HH:mm', 'M/D/YY HH:mm', 'YYYY-MM-DD HH:mm',
             'MM/DD/YYYY HHmm', 'MM/DD/YY HHmm', 'M/D/YYYY HHmm', 'M/D/YY HHmm', 'YYYY-MM-DD HHmm',
             'MM/DD/YYYY HHmmss', 'MM/DD/YY HHmmss', 'M/D/YYYY HHmmss', 'M/D/YY HHmmss', 'YYYY-MM-DD HHmmss'];
-        this._sequenceMap = require(`./schemas/progress/${this.dbName.toLowerCase()}/tableSequenceMap.json`); //used by getSchema utomatically figure out ID fields
+        this._sequenceMap = await this._getTableSequenceMap();
         await this._populateSchema(dbo);
         return this;
+    }
+
+    async _getTableSequenceMap(){
+        try{
+           return  this._copy(require(`./schemas/progress/${this.dbName.toLowerCase()}/tableSequenceMap.json`)); //used by getSchema utomatically figure out ID fields        
+        }catch(ex){
+            return {}
+        }
     }
     
     /** @returns {Promise<void>} */
@@ -73,15 +98,16 @@ class ProgressORM {
                                     END) as 'type'
                                     ,f."_file-name" as 'table'  
                                     ,fd."_Width" as 'width'                 
-                                    FROM ${this.schemaOwner}."_field" fd 
-                                    INNER JOIN ${this.schemaOwner}."_file" f ON fd."_file-recid" = f.ROWID 
+                                    FROM ${this.dbPrefix}${this.schemaOwner}."_field" fd 
+                                    INNER JOIN ${this.dbPrefix}${this.schemaOwner}."_file" f ON fd."_file-recid" = f.ROWID 
                                     WHERE f."_Hidden" = 0 
                                     order by  f."_file-name"
                                     with (nolock)`);
         for (let item of allFields) {
-            let table = this._schemas[item.table];
+            let table = this._schemas[item.table.toLowerCase()];
             if (!table)
-                table = this._schemas[item.table] = {};
+                table = this._schemas[item.table.toLowerCase()] = {};
+                
             if (item.ArrayExtent > 0) //we are NOT handling array type fields
                 continue;
             let seqName = this._getSequenceNameForID(item.table, item);
@@ -93,41 +119,124 @@ class ProgressORM {
             delete item.table;
             switch (item.field) {
                 case 'CreateDateTime':
-                    item = { field: item.field, type: 'datetime', defaultValueOnInsert: 'SYSTIMESTAMP', preventUpdate: true, preventSelection: true };
+                    item = { ...item, type: 'datetime', defaultValueOnInsert: 'SYSTIMESTAMP', preventUpdate: true, preventSelection: true };
                     break;
                 case 'ModifyDateTime':
                 case 'ChangeDT':
-                    item = { field: item.field, type: 'datetime', defaultValueOnInsert: 'SYSTIMESTAMP', defaultValueOnUpdate: 'SYSTIMESTAMP', preventSelection: true };
+                    item = { ...item, type: 'datetime', defaultValueOnInsert: 'SYSTIMESTAMP', defaultValueOnUpdate: 'SYSTIMESTAMP', preventSelection: true };
                     break;
                 case 'PlantId':
-                    item = { field: item.field, type: 'integer', defaultValueOnInsert: this.schemaOptions.plantid };
+                    item = { ...item, type: 'integer',defaultValueOnInsert:0 };
                     break;
             }
-            table[item.field] = item;
+
+            if(item.relatedDateField)
+                item.relatedDateField = item.relatedDateField.toLowerCase();
+
+            if(item.relatedTimeField)
+                item.relatedTimeField = item.relatedTimeField.toLowerCase();
+
+            if(item.relatedDateTimeField)
+                item.relatedDateTimeField = item.relatedDateTimeField.toLowerCase();
+
+            table[item.field.toLowerCase()] = item;
         }
         await this._applySchemaOverrides();
     }
+
+    
+    async _readDir(dir){
+        const fs = require('fs');
+        try{   
+                     
+            let files = fs.readdirSync(dir)
+            return files;
+        }catch(ex){
+            return [];
+        }        
+    }
+    
     
     /** @returns {Promise<void>} */
     async _applySchemaOverrides() {
+
+        let files = await this._readDir(this._schemaPath);
+        if(!files.length)
+            return
+        let fileLCMap = {}
+        files.map(fileName => {
+            let fileN = fileName.toLowerCase();
+            let fileType = 'js'
+            if(fileN.endsWith('.json')){
+                fileN = fileN.slice(0, fileN.length - 5)
+                fileType = 'json'
+            }                
+            else if(fileN.endsWith('.js')){
+                fileN = fileN.slice(0, fileN.length - 3)
+                fileType = 'js'
+            }else
+                return;
+                
+
+            fileLCMap[fileN] = {fileName,fileType};
+        })
+
         for (let tableName in this._schemas) {
             let table = this._schemas[tableName];
             try {
-                let override = require(`${this._schemaPath}${tableName}`)(this.schemaOptions); //only require based on 
+                let schemaFile = fileLCMap[tableName];
+                if(!schemaFile)
+                    continue;
+
+                let overrideSchema,override = {};    
+                if(schemaFile.fileType == 'js')
+                    overrideSchema = require(`${this._schemaPath}${schemaFile.fileName}`)(this.schemaOptions); //only require based on 
+                else
+                    overrideSchema = require(`${this._schemaPath}${schemaFile.fileName}`); //only require based on 
+                
+
                 let fieldsToDel = [];
-                for (let fieldName in override) {
+                for (let f in overrideSchema) {
+                    
+                    let fieldName = f.toLowerCase();
+
+                    override[fieldName] = overrideSchema[f]
+
                     if (fieldName == '_nvp')
                         continue;
+
                     if (!table[fieldName]) {
                         fieldsToDel.push(fieldName);
                         continue;
                     }
+
                     if (typeof override[fieldName] === 'string')
                         override[fieldName] = { type: override[fieldName] };
-                    table[fieldName] = { ...table[fieldName], ...override[fieldName] };
+
+                    let item = override[fieldName]
+
+                    if(item.relatedDateField)
+                        item.relatedDateField = item.relatedDateField.toLowerCase();
+        
+                    if(item.relatedTimeField)
+                        item.relatedTimeField = item.relatedTimeField.toLowerCase();
+        
+                    if(item.relatedDateTimeField)
+                        item.relatedDateTimeField = item.relatedDateTimeField.toLowerCase();
+
+                    table[fieldName] = { ...table[fieldName], ...item };
+
+                    if(table[fieldName].alias){ //if there is any alias then make it alternatives
+                        if(!Array.isArray(table[fieldName].alternatives))
+                            table[fieldName].alternatives = [];  
+
+                        table[fieldName].alternatives.push(table[fieldName].alias.toLowerCase())
+                    }
                 }
+
                 for (let fieldName of fieldsToDel)
                     delete override[fieldName];
+
                 if (this._overrideSchemaStrict) {
                     fieldsToDel = [];
                     for (let fieldName in table) {
@@ -137,19 +246,26 @@ class ProgressORM {
                     for (let fieldName of fieldsToDel)
                         delete table[fieldName];
                 }
+
                 if (override._nvp) {
                     table._nvp = override._nvp; //nvp schema
                 }
+
             }
             catch (ex) { }
+
+            if(typeof table._meta !== 'object') //we must have _meta object in schema
+                table._meta = {}
+
         }
     }
     
     /** @returns {string} */
     _getSequenceNameForID(tableName, item) {
+        let tableNameLC = tableName.toLowerCase();
         let seqName = '';
-        if (this._sequenceMap[tableName]) {
-            seqName = this._sequenceMap[tableName][item.field] || '';
+        if (this._sequenceMap[tableNameLC]) {
+            seqName = this._sequenceMap[tableNameLC][item.field] || this._sequenceMap[tableNameLC][item.field.toLowerCase()] || '';
         }
         return seqName;
     }
@@ -161,9 +277,9 @@ class ProgressORM {
     
     /** @returns {any} */
     getSchema(schema) {
-        if (!this._schemas[schema])
+        if (!this._schemas[schema.toLowerCase()])
             throw `Unable to find schema for ${schema}`;
-        return JSON.parse(JSON.stringify(this._schemas[schema])); //we always should return the copy of schema so that it won't get mutated
+        return JSON.parse(JSON.stringify(this._schemas[schema.toLowerCase()])); //we always should return the copy of schema so that it won't get mutated
     }
     
     /** @returns {string} */
@@ -238,8 +354,8 @@ class ProgressORM {
             fieldModel.alternatives = [];
         if (typeof fieldValue == 'undefined') {
             for (let alt of fieldModel.alternatives) {
-                if (typeof obj[alt] !== 'undefined') {
-                    fieldValue = obj[alt];
+                if (typeof obj[alt.toLowerCase()] !== 'undefined') {
+                    fieldValue = obj[alt.toLowerCase()];
                     break;
                 }
             }
@@ -266,7 +382,7 @@ class ProgressORM {
                 }
                 else if (fieldValue instanceof moment)
                     return `${quote}${fieldValue.format(fieldModel.format)}${quote}`;
-                else if (fieldValue === 'SYSTIMESTAMP')
+                else if (fieldValue === 'SYSTIMESTAMP' || fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSDATE')
                     return `${quote}${moment().format(fieldModel.format)}${quote}`;
                 else if (moment(fieldValue, this.validDateFormats, false).isValid())
                     return `${quote}${moment(fieldValue, this.validDateFormats, false).format(fieldModel.format)}${quote}`;
@@ -282,8 +398,8 @@ class ProgressORM {
                 }
                 else if (fieldValue instanceof moment)
                     return `${quote}${fieldValue.format(fieldModel.format)}${quote}`;
-                else if (fieldValue === 'SYSTIMESTAMP')
-                    return `${fieldValue}`;
+                else if (fieldValue === 'getdate()' || fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSTIMESTAMP' || fieldValue === 'SYSDATE')
+                    return (fieldModel.dbType !== 'datetime')?moment().format(fieldModel.format):`SYSTIMESTAMP`;  //varchars can be defined as datetime            
                 else if (moment(fieldValue, this.validDateTimeFormats, false).isValid())
                     return `${quote}${moment(fieldValue, this.validDateTimeFormats, false).format(fieldModel.format)}${quote}`;
                 else
@@ -298,7 +414,7 @@ class ProgressORM {
                 }
                 else if (fieldValue instanceof moment)
                     return `${quote}${fieldValue.format(fieldModel.format)}${quote}`;
-                else if (fieldValue === 'SYSTIMESTAMP')
+                else if (fieldValue === 'SYSTIMESTAMP' || fieldValue === 'CURRENT_TIMESTAMP' || fieldValue === 'SYSDATE' || fieldValue === 'SYSTIME')
                     return `${quote}${moment().format(fieldModel.format)}${quote}`;
                 else if (moment(fieldValue, this.validTimeFormats, false).isValid())
                     return `${quote}${moment(fieldValue, this.validTimeFormats, false).format(fieldModel.format)}${quote}`;
@@ -306,14 +422,14 @@ class ProgressORM {
                     return null;
                 break;
             case 'integer':
-                if (fieldValue == null)
+                if (fieldValue == null || isNaN(fieldValue))
                     return null;
                 else if (typeof fieldValue == 'string' && !fieldValue.trim())
                     return null;
                 return parseInt(fieldValue);
                 break;
             case 'decimal':
-                if (fieldValue == null)
+                if (fieldValue == null || isNaN(fieldValue))
                     return null;
                 else if (typeof fieldValue == 'string' && !fieldValue.trim())
                     return null;
@@ -329,7 +445,7 @@ class ProgressORM {
                 return `${quote}${(fieldValue) ? 1 : 0}${quote}`;
                 break;
             default: //default should be string
-                if (fieldValue == null)
+                if (fieldValue == null || fieldValue == 'null')
                     return null;
                 return `${quote}${this.escape(fieldValue)}${quote}`;
                 break;
@@ -434,17 +550,21 @@ class ProgressORM {
         let moment = this.moment;
         let obj = {}; //let obj = JSON.parse(JSON.stringify(params))//copying
         for (let i in params) {
-            let val = params[i];
+
+            let val = params[i];           
+            let key = String(i).toLowerCase();
+
             if (typeof val === 'object') {
                 if (val instanceof moment)
-                    obj[i] = val.clone();
+                    obj[key] = val.clone();
                 else if (val instanceof Date)
-                    obj[i] = new Date(val.getTime());
+                    obj[key] = new Date(val.getTime());
                 else
-                    obj[i] = JSON.parse(JSON.stringify(val));
+                    obj[key] = JSON.parse(JSON.stringify(val));
             }
             else
-                obj[i] = params[i];
+                obj[key] = val;
+                
         }
         return obj;
     }
@@ -453,42 +573,84 @@ class ProgressORM {
     _checkRequiredStatus(prop, val, fieldModel, requiredFails, mode = 'insert') {
         if (mode == 'insert' && fieldModel.requiredOnInsert && !fieldModel.preventInsert) {
             if (val == null || (val === "''" && fieldModel.type === 'string'))
-                requiredFails.push(prop);
+                requiredFails[prop] = true;
         }
         else if (mode == 'update' && fieldModel.requiredOnUpdate && !fieldModel.preventUpdate) {
             if (val == null || (val === "''" && fieldModel.type === 'string'))
-                requiredFails.push(prop);
+                 requiredFails[prop] = true;
         }
     }
     //reason needed it to gracefully handle nulls and other invalid data types from insert quries 
     //use it for complex insert statments For rudementary inserts with less fields I would prefer
     //old school way but it still works
+
+    _getFieldsToReprocessBecauseOfRelatedFields(schema,relatedFields,fieldValuesHash){
+
+        let reprocessFields = {},moment = this.moment;
+        for(let {prop,fldModel} of relatedFields){
+
+            if(fldModel.type === 'date' || fldModel.type === 'time'){
+                
+                if(fldModel.relatedDateTimeField && typeof fieldValuesHash[fldModel.relatedDateTimeField] === 'string'){                        
+                    reprocessFields[prop] = moment(fieldValuesHash[fldModel.relatedDateTimeField].replaceAll("'",'')).format(fldModel.format)
+                }                     
+            }else if(fldModel.type === 'datetime'){
+                
+                if(fldModel.relatedDateField && typeof fieldValuesHash[fldModel.relatedDateField] === 'string'
+                   && fldModel.relatedTimeField && typeof fieldValuesHash[fldModel.relatedTimeField] === 'string' ){
+
+                    let relatedDateFieldModel = schema[fldModel.relatedDateField],
+                        relatedTimeFieldModel = schema[fldModel.relatedTimeField];    
+
+                    if(relatedTimeFieldModel && relatedTimeFieldModel){
+
+                        let d = moment(fieldValuesHash[fldModel.relatedDateField].replaceAll("'",''),relatedDateFieldModel.format).format(this.dateFormat),
+                            t = moment(fieldValuesHash[fldModel.relatedTimeField].replaceAll("'",''),relatedTimeFieldModel.format).format(this.timeFormat);
+                     
+                        if(!fldModel.format)    
+                            fldModel.format = this.dateTimeFormat;
+
+                        reprocessFields[prop] = moment(`${d} ${t}`,`${this.dateFormat} ${this.timeFormat}`).format(fldModel.format)
+                    }
+                    
+                }                     
+            }                   
+        }
+
+        return reprocessFields;
+
+    }
     
     /** @returns {{ fields: any[]; values: any[]; }} */
     generateInsertQueryDataHelper(params, schema) {
         let obj = this._copy(params);
         let fields = [], values = [];
-        let val = '', fieldModel, requiredFails = [];
-        let processField = (prop) => {
-            if (prop == 'NameValuePairs')
+        let val = '', fieldModel, requiredFails = {},relatedFields = [],fieldValuesHash = {};
+        let processField = (prop,isReprocessing = false) => {
+            if (prop == 'namevaluepairs')
                 return;
             if (typeof fieldModel === 'string')
                 fieldModel = { type: fieldModel };
             val = this._readWithSchema(val, obj, fieldModel, 'insert');
             this._checkRequiredStatus(prop, val, fieldModel, requiredFails, 'insert');
             if (val == null) {
+                 if(isReprocessing == false && (fieldModel.relatedDateField || fieldModel.relatedTimeField || fieldModel.relatedDateTimeField)){ //if there is any relatedFields then add it to array to process later
+                    relatedFields.push({prop,fldModel:fieldModel});
+                }
                 delete obj[prop]; //null will be discarded
                 return;
             }
+            fieldValuesHash[prop] = val;
             values.push(val);
             fields.push(`"${prop}"`);
         };
         let processNVPField = (nvpFields) => {
             let NVPObject = {};
-            if (obj.NameValuePairs)
-                NVPObject = this.nvpToObject(obj.NameValuePairs);
+            if (obj.namevaluepairs)
+                NVPObject = this.nvpToObject(obj.namevaluepairs);
             for (let prop in nvpFields) {
                 fieldModel = nvpFields[prop];
+                prop = prop.toLowerCase();
                 val = obj[prop];
                 if (typeof fieldModel === 'string')
                     fieldModel = { type: fieldModel };
@@ -505,18 +667,26 @@ class ProgressORM {
             }
             val = this.objectToNvp(NVPObject);
             values.push(val);
-            fields.push(`"NameValuePairs"`);
+            fields.push(`"namevaluepairs"`);
         };
         if (schema) {
             if (schema instanceof Array) {
                 fieldModel = { type: 'any' };
                 for (let prop of schema) {
+
+                    if(prop == '_meta')
+                        continue;
+
                     val = obj[prop];
                     processField(prop);
                 }
             }
             else {
                 for (let prop in schema) {
+
+                    if(prop == '_meta')
+                        continue;
+
                     val = obj[prop];
                     fieldModel = schema[prop];
                     processField(prop);
@@ -525,6 +695,10 @@ class ProgressORM {
         }
         else {
             for (let prop in obj) {
+                if (prop === '_meta') {                    
+                    continue;
+                }
+
                 if (prop === '_nvp') {
                     processNVPField(schema[prop]);
                     continue;
@@ -534,6 +708,24 @@ class ProgressORM {
                 processField(prop);
             }
         }
+
+        if(relatedFields.length && schema){  //if there are potential related fields
+
+            let fieldsToReprocess = this._getFieldsToReprocessBecauseOfRelatedFields(schema,relatedFields,fieldValuesHash)
+ 
+            for (let prop in fieldsToReprocess) {
+ 
+                 if(prop == '_meta')
+                     continue;
+                 delete requiredFails[prop];
+                 val = fieldsToReprocess[prop];
+                 fieldModel = schema[prop];
+                 processField(prop,true);
+             }
+         }
+         requiredFails = Object.keys(requiredFails);
+
+
         if (requiredFails.length) {
             throw {
                 code: 'MISSING_REQUIRED_PARAM',
@@ -550,28 +742,37 @@ class ProgressORM {
     generateUpdateQueryDataHelper(params, schema) {
         let obj = this._copy(params);
         let updateSqlStr = '';
-        let val = '', fieldModel, requiredFails = [];
-        let processField = (prop) => {
-            if (prop == 'NameValuePairs')
+        let val = '', fieldModel, requiredFails = [],relatedFields = [],fieldValuesHash = {};
+        let processField = (prop,isReprocessing = false) => {
+            if (prop == 'namevaluepairs')
                 return;
             if (typeof fieldModel === 'string')
                 fieldModel = { type: fieldModel };
             val = this._readWithSchema(val, obj, fieldModel, 'update');
             this._checkRequiredStatus(prop, val, fieldModel, requiredFails, 'update');
             if (val == null) {
+
+                if(isReprocessing == false && (fieldModel.relatedDateField || fieldModel.relatedTimeField || fieldModel.relatedDateTimeField)){ //if there is any relatedFields then add it to array to process later
+                    relatedFields.push({prop,fldModel:fieldModel});
+                }
+
                 delete obj[prop]; //null will be discarded
                 return;
             }
             if (updateSqlStr.length)
                 updateSqlStr += ', ';
+
+            fieldValuesHash[prop] = val;   
+
             updateSqlStr += ` "${prop}" = ${val} `;
         };
         let processNVPField = (nvpFields) => {
             let NVPObject = {};
-            if (obj.NameValuePairs)
-                NVPObject = this.nvpToObject(obj.NameValuePairs);
+            if (obj.namevaluepairs)
+                NVPObject = this.nvpToObject(obj.namevaluepairs);
             for (let prop in nvpFields) {
                 fieldModel = nvpFields[prop];
+                prop = prop.toLowerCase();
                 val = obj[prop];
                 if (typeof fieldModel === 'string')
                     fieldModel = { type: fieldModel };
@@ -591,18 +792,26 @@ class ProgressORM {
                 return;
             if (updateSqlStr.length)
                 updateSqlStr += ', ';
-            updateSqlStr += ` "NameValuePairs" = '${val}' `;
+            updateSqlStr += ` "namevaluepairs" = '${val}' `;
         };
         if (schema) {
             if (schema instanceof Array) {
                 fieldModel = { type: 'any' };
                 for (let prop of schema) {
+                    
+                    if(prop == '_meta')
+                        continue;
+
                     val = obj[prop];
                     processField(prop);
                 }
             }
             else {
                 for (let prop in schema) {
+                    
+                    if(prop === '_meta')
+                         continue;
+
                     if (prop === '_nvp') {
                         processNVPField(schema[prop]);
                         continue;
@@ -615,11 +824,34 @@ class ProgressORM {
         }
         else {
             for (let prop in obj) {
+
+                if(prop == '_meta')
+                    continue;
+
                 val = obj[prop];
                 fieldModel = this._determineFieldModel(val);
                 processField(prop);
             }
         }
+
+        if(relatedFields.length && schema){  //if there are potential related fields
+
+            let fieldsToReprocess = this._getFieldsToReprocessBecauseOfRelatedFields(schema,relatedFields,fieldValuesHash)
+ 
+            for (let prop in fieldsToReprocess) {
+ 
+                 if(prop == '_meta')
+                     continue;
+ 
+                 delete requiredFails[prop];
+                 val = fieldsToReprocess[prop];
+                 fieldModel = schema[prop];
+                 processField(prop,true);
+             }
+         }
+ 
+         requiredFails = Object.keys(requiredFails);
+
         if (requiredFails.length) {
             throw {
                 code: 'MISSING_REQUIRED_PARAM',
@@ -627,6 +859,7 @@ class ProgressORM {
                 data: requiredFails
             };
         }
+        
         return updateSqlStr;
     }
     
@@ -638,36 +871,61 @@ class ProgressORM {
         if (Array.isArray(schema)) {
             return schema.map(fieldName => `${prefix}"${fieldName}"`).join(',');
         }
-        let fields = [];
+        let fields = [],ignorePreventSelect = false;
         
-        if(!selectedFields || !Array.isArray(selectedFields))
+        if(selectedFields === '*'){
+
+            selectedFields = null;
+            ignorePreventSelect = true
             selectedFields = Object.keys(schema)
 
-        for (let fieldName of selectedFields) {
+        }else if(Array.isArray(selectedFields)){
+
+            ignorePreventSelect = true
+
+        }else{
+            selectedFields = Object.keys(schema)
+        }   
+
+        for (let f of selectedFields) {
+            
+            let fieldName = f.toLowerCase();
+
+            if(fieldName == '_meta')
+                continue;
+
             if (fieldName == '_nvp') { //handling NameValuePairs field
-                if (!schema['NameValuePairs']) {
+                if (!schema['namevaluepairs']) {
                     fields.push(`${prefix}"NameValuePairs"`);
                 }
                 continue;
             }
-            let type = schema[fieldName];
+            let type = schema[fieldName],
+                fieldAlias = f;
 
             if(type == null)  //it means field is not in schema
                 continue;
 
             if (typeof type === 'object') {
-                if (type.preventSelection) //means our schema has defined that we don't want this field to apear in select clause
+                if (ignorePreventSelect == false && type.preventSelection) //means our schema has defined that we don't want this field to apear in select clause
                     continue;
+
+                if(type.field)
+                    fieldAlias = type.field; 
+
+                if(type.alias != null)
+                    fieldAlias = type.alias;     
+
                 type = type.type;
             }
             switch (type) {
                 // case 'date': fieldName = `convert(varchar, ${prefix}"${fieldName}", 23) as '${fieldName}'`; break;
                 // case 'datetime': fieldName = `convert(varchar, ${prefix}"${fieldName}", 121) as '${fieldName}'`; break;
                 case 'string':
-                    fieldName = `IFNULL(${prefix}"${fieldName}",'') as '${fieldName}'`;
+                    fieldName = `IFNULL(${prefix}"${fieldName}",'') as '${fieldAlias}'`;
                     break;
                 default:
-                    fieldName = `${prefix}"${fieldName}"`;
+                    fieldName = `${prefix}"${fieldName}" as '${fieldAlias}'`;
                     break;
             }
             fields.push(fieldName);
@@ -681,6 +939,11 @@ class ProgressORM {
             equals: 'equals',
             eq: 'equals',
             '=': 'equals',
+            notEqual: 'notEqual',
+            notEquals: 'notEqual',
+            ne: 'notEqual',
+            '!=': 'notEqual',
+            '<>': 'notEqual',
             greaterthan: 'greaterThan',
             gt: 'greaterThan',
             '>': 'greaterThan',
@@ -710,9 +973,17 @@ class ProgressORM {
             includesin: 'includes',
             includes: 'includes',
             in: 'includes',
+             //sql statement field is null
+             isnull:'isnull' 
         };
 
         let condition, value = null;
+
+        if(obj === null){
+            condition = 'isnull'
+            value = ''
+            return { condition, value };
+       }
         
         if(Array.isArray(obj)){
             return {
@@ -742,7 +1013,7 @@ class ProgressORM {
         let whereSqlStr = '';
         let val = '', fieldModel;
         let processField = (prop) => {
-            if (prop == 'NameValuePairs')
+            if (prop == 'namevaluepairs')
                 return;
             let condition = 'equals';
             if (typeof fieldModel === 'string')
@@ -776,6 +1047,9 @@ class ProgressORM {
                 case 'equals':
                     whereSqlStr += ` "${prop}" = ${val} `;
                     break;
+                case 'notEqual':
+                     whereSqlStr += ` "${prop}" != ${val} `;
+                     break;
                 case 'greaterThan':
                     whereSqlStr += ` "${prop}" > ${val} `;
                     break;
@@ -800,14 +1074,18 @@ class ProgressORM {
                 case 'includes':
                     whereSqlStr += ` "${prop}" IN (${val.join(',')}) `;
                     break;
+                case 'isnull':
+                    whereSqlStr += ` "${prop}" is null `;
+                    break;
             }
         };
         let processNVPField = (nvpFields) => {
             let NVPObject = {};
-            if (obj.NameValuePairs)
-                NVPObject = this.nvpToObject(obj.NameValuePairs);
+            if (obj.namevaluepairs)
+                NVPObject = this.nvpToObject(obj.namevaluepairs);
             for (let prop in nvpFields) {
                 fieldModel = nvpFields[prop];
+                prop = prop.toLowerCase();
                 val = obj[prop];
                 if (typeof fieldModel === 'string')
                     fieldModel = { type: fieldModel };
@@ -837,12 +1115,18 @@ class ProgressORM {
             if (schema instanceof Array) {
                 fieldModel = { type: 'any' };
                 for (let prop of schema) {
+                    if(prop == '_meta')
+                        continue;
                     val = obj[prop];
                     processField(prop);
                 }
             }
             else {
                 for (let prop in schema) {
+
+                    if(prop == '_meta')
+                        continue;
+
                     if (prop === '_nvp') {
                         processNVPField(schema[prop]);
                         continue;
@@ -855,6 +1139,10 @@ class ProgressORM {
         }
         else {
             for (let prop in obj) {
+                
+                if(prop == '_meta')
+                    continue;
+
                 val = obj[prop];
                 fieldModel = this._determineFieldModel(val);
                 processField(prop);
@@ -876,32 +1164,50 @@ class ProgressORM {
         }
     }
     
-    /** @returns {Promise<any>} */
-    async readOne(dbo, tableName, query,options, schema) {
+     /**
+      * 
+     * @param {CfsNodeCore.DB} dbo 
+     * @param {string} tableName 
+     * @param {CfsNodeCore.ORM.FilterParams} query 
+     * @param {CfsNodeCore.ORM.ReadOptionsParams} [options]  
+     * @returns {Promise<CfsNodeCore.SqlResult | null>}      
+    */
+    async readOne(dbo, tableName, query, options = {}) {
+        
+        let {schema} = options;
+
         if (!schema)
             schema = this.getSchema(tableName);
         let where = this.generateSimpleWhereClause(query, schema);
         if (!where.startsWith('WHERE '))
             throw { code: 'PROVIDE_FILTER_CRITERIA', message: `Please provide valid filter criteria` };
 
-        if (typeof options !== 'object' && !Array.isArray(options))
-            options = {};
         let result = await this.read(dbo, tableName, query,{
             ...options,
             limit:1
-        }, schema)
+        })
         return (result.length) ? result[0] : null;
     }
     
-    /** @returns {Promise<any>} */
-    async read(dbo, tableName, query, options, schema) {
+     /**
+     * 
+     * @param {CfsNodeCore.DB} dbo 
+     * @param {string} tableName 
+     * @param {CfsNodeCore.ORM.FilterParams} query 
+     * @param {CfsNodeCore.ORM.ReadOptionsParams} [options] 
+     * @returns {Promise<Array<CfsNodeCore.SqlResult>>}
+     */
+    async read(dbo, tableName, query, options = {}) {
+        
+        let {schema} = options;
+
         if (!schema)
             schema = await this.getSchema(tableName);
         let where = this.generateSimpleWhereClause(query, schema);
         if (!where.startsWith('WHERE '))
             throw { code: 'PROVIDE_FILTER_CRITERIA', message: `Please provide valid filter criteria` };
-        if (typeof options !== 'object' && !Array.isArray(options))
-            options = {};
+        
+
         options.limit = options.limit || options.take || null;
         options.offset = options.offset || options.skip || null;
         options.sort = options.sort || null;
@@ -930,8 +1236,9 @@ class ProgressORM {
             if (orderBys.length)
                 orderBy = ' ORDER BY ' + orderBys.join(',');
         }
+
         let results = await dbo.sql(`SELECT ${top}  ${this.makeSQLSelector(schema,null,options.fields)} 
-                    FROM ${this.schemaOwner}."${tableName}" 
+                    FROM ${this.dbPrefix}${this.schemaOwner}."${tableName}" 
                     ${where}
                     ${orderBy}
                     ${offset}
@@ -956,25 +1263,39 @@ class ProgressORM {
     }
     
     /** @returns {Promise<any>} */
-    async insert(dbo, tableName, params, schema) {
+    async insert(dbo, tableName, params, options = {}) {
+        
+        let {schema,returnResult} = options;
+
         if (!schema)
             schema = await this.getSchema(tableName);
         let arr = (Array.isArray(params)) ? params : [params];
         //I can use Promise.all() but for now I'm keeping it one at time since this is PROGRESS ORM  so 
         //we don't necessarily want to consume all db agents
-        let results = [];
+        
         for (let row of arr) {
             let data = this.generateInsertQueryDataHelper(row, schema);
-            let result = await dbo.sql(`INSERT INTO ${this.schemaOwner}."${tableName}" (${data.fields})  VALUES(${data.values})`);
-            results.push(result);
+            await dbo.sql(`INSERT INTO ${this.dbPrefix}${this.schemaOwner}."${tableName}" (${data.fields})  VALUES(${data.values})`);            
         }
-        if (results.length === 1)
-            return results[0];
-        return results;
+
+        if(returnResult){
+            let results = [];
+            for(let row of arr){
+                let result = await this.readOne(dbo,tableName,row)
+                results.push(result)
+            }
+            if(results.length === 1)
+                return results[0];
+            return results;
+        }
+        
     }
     
     /** @returns {Promise<any>} */
-    async update(dbo, tableName, params, query, schema) {
+    async update(dbo, tableName, params, query, options = {}) {
+        
+        let {schema,returnResult} = options;
+
         if (!schema)
             schema = await this.getSchema(tableName);
         let where = this.generateSimpleWhereClause(query, schema);
@@ -983,21 +1304,61 @@ class ProgressORM {
         //archiving previous     
         //await dbo.sql(`INSERT INTO dbo."${tableName}_History" select * from dbo."${tableName}_History" ${where} `)
         let updateSqlStr = this.generateUpdateQueryDataHelper(params, schema);
-        return dbo.sql(`UPDATE ${this.schemaOwner}."${tableName}" 
+        await dbo.sql(`UPDATE ${this.dbPrefix}${this.schemaOwner}."${tableName}" 
                SET                 
                ${updateSqlStr}
                ${where} 
                `);
+
+        if(returnResult)
+             return this.read(dbo,tableName,where,options)
+
     }
     
     /** @returns {Promise<any>} */
-    async remove(dbo, tableName, query, schema) {
+    async remove(dbo, tableName, query, options = {}) {
+
+        let {schema} = options;
+
         if (!schema)
             schema = await this.getSchema(tableName);
         let where = this.generateSimpleWhereClause(query, schema);
         if (!where.startsWith('WHERE '))
             throw `Cannot delete without filter criteria`;
-        return dbo.sql(`DELETE FROM ${this.schemaOwner}."${tableName}" ${where}`);
+        return dbo.sql(`DELETE FROM ${this.dbPrefix}${this.schemaOwner}."${tableName}" ${where}`);
+    }
+
+     /**
+     * 
+     * @param {string} table  table name 
+     * @param {Object} schemaOverrides  the schema object that we want to overrdie
+     * @param {boolean} [permenant] permenant flag will permenantly change the schema from default
+     * @returns {Object} 
+     */
+     overrideSchema(table,schemaOverrides,permenant = false){
+
+        let srcSchema = this.getSchema(table);
+
+        if(permenant){
+            srcSchema = this._schemas[table.toLowerCase()] 
+        }
+
+        for(let i in schemaOverrides){
+
+            let fieldSchema = srcSchema[i.toLowerCase()]
+            if(fieldSchema == null)
+                continue;
+
+            fieldSchema = {
+                ...fieldSchema,
+                ...schemaOverrides[i]
+            }
+            srcSchema[i.toLowerCase()] = fieldSchema;
+        }
+
+        
+
+        return srcSchema;
     }
 }
 

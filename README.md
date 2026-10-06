@@ -216,7 +216,41 @@ queries during a port.
 
 ## JSON file storage
 
-`JsonFileDbORM` uses a different constructor and does not take a SQL adapter:
+`JsonFileDbORM` uses a different constructor and does not take a SQL adapter.
+You must create a schema JSON file for each table before using that table.
+For example, with `dbName: 'demo'`, the default schema path is
+`./schemas/jsonfiledb/demo/`, relative to the process's current working
+directory. The `Customer` table therefore requires this file:
+
+```text
+schemas/
+  jsonfiledb/
+    demo/
+      Customer.json
+```
+
+Create `schemas/jsonfiledb/demo/Customer.json` with the table's fields and
+their types. Mark the primary key field with `isID: true`:
+
+```json
+{
+  "id": {
+    "type": "integer",
+    "isID": true
+  },
+  "name": {
+    "type": "string"
+  },
+  "state": {
+    "type": "string"
+  }
+}
+```
+
+Without this file, the first operation on `Customer` (including `insert`)
+fails with `ENOENT` because the ORM attempts to read the table schema before
+processing records. For a non-default schema directory, pass its path with the
+`schemaPath` option.
 
 ```js
 const { JsonFileDbORM } = require('@realjavascriptkid/orm');
@@ -224,21 +258,22 @@ const { JsonFileDbORM } = require('@realjavascriptkid/orm');
 async function main() {
   const db = await new JsonFileDbORM({
     dbName: 'demo',
+    schemaPath: './schemas/jsonfiledb/demo',
     dataPath: './data/demo'
   });
 
-  await db.insert('Customer', {
-    id: 1001,
-    name: 'Example Farms',
-    state: 'NC'
-  });
-
+  await db.insert('Customer', { id: 1001, name: 'Example Farms', state: 'NC' });
   const customers = await db.read('Customer', { state: 'NC' });
+  await db.commit();
   console.log(customers);
 }
 
 main().catch(console.error);
 ```
+
+The paths are resolved from the directory where you run `node`, not from the
+installed package's directory. `dataPath` is where JSON table data is stored;
+`schemaPath` is where your application's schema files live.
 
 Unlike the SQL-backed ORMs, JSON methods do not take `dbo` as an argument.
 JSON storage is useful for lightweight use cases, but it is not a replacement

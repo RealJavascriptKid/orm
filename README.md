@@ -33,13 +33,16 @@ and tested as part of a migration.
 
 ## Installation
 
-Install the package from npm:
+Install the published package from npm in your Node.js application directory.
+Node.js 16 or later is required.
 
 ```bash
 npm install @realjavascriptkid/orm
 ```
 
-The package entry point exports all three ORM classes:
+This adds `@realjavascriptkid/orm` to your application's dependencies. The
+package is available on the [npm package page](https://www.npmjs.com/package/@realjavascriptkid/orm).
+It uses CommonJS; import the ORM classes in your application with `require`:
 
 ```js
 const {

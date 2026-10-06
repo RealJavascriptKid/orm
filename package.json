@@ -1,21 +1,45 @@
 {
-  "name": "orm",
+  "name": "@realjavascriptkid/orm",
   "version": "1.0.2",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "description": "Schema-aware data access for OpenEdge Progress, Microsoft SQL Server, and JSON files.",
+  "main": "./index.js",
+  "type": "commonjs",
+  "files": [
+    "index.js",
+    "ProgressORM.js",
+    "SqlServerORM.js",
+    "JsonFileDbORM.js",
+    "schemas/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=16"
   },
+  "scripts": {
+    "test": "node test/smoke.js"
+  },
+  "keywords": [
+    "orm",
+    "progress",
+    "openedge",
+    "sql-server",
+    "json"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RealJavascriptKid/orm.git"
   },
   "author": "Saad Nisar",
   "license": "ISC",
+  "author_url": "https://saadpro.com",
   "bugs": {
     "url": "https://github.com/RealJavascriptKid/orm/issues"
   },
   "homepage": "https://github.com/RealJavascriptKid/orm#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "moment": "^2.29.4"
   }

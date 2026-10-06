@@ -33,18 +33,20 @@ and tested as part of a migration.
 
 ## Installation
 
-Clone this repository, then install its dependencies:
+Install the package from npm:
 
 ```bash
-git clone https://github.com/RealJavascriptKid/orm.git
-cd orm
-npm install
+npm install @realjavascriptkid/orm
 ```
 
 The package entry point exports all three ORM classes:
 
 ```js
-const { ProgressORM, SqlServerORM, JsonFileDbORM } = require('./index');
+const {
+  ProgressORM,
+  SqlServerORM,
+  JsonFileDbORM
+} = require('@realjavascriptkid/orm');
 ```
 
 ## SQL database setup
@@ -55,7 +57,7 @@ manage the connection for you. The adapter's `sql` method must return query
 results in the format expected by your database driver.
 
 ```js
-const { ProgressORM } = require('./index');
+const { ProgressORM } = require('@realjavascriptkid/orm');
 
 // Replace this with your application's OpenEdge database adapter.
 const dbo = {
@@ -87,7 +89,7 @@ pass the adapter as the first argument to methods such as `read`, `insert`,
 For SQL Server, use the same adapter pattern with `SqlServerORM`:
 
 ```js
-const { SqlServerORM } = require('./index');
+const { SqlServerORM } = require('@realjavascriptkid/orm');
 
 async function main() {
   const db = await new SqlServerORM({
@@ -214,7 +216,7 @@ queries during a port.
 `JsonFileDbORM` uses a different constructor and does not take a SQL adapter:
 
 ```js
-const { JsonFileDbORM } = require('./index');
+const { JsonFileDbORM } = require('@realjavascriptkid/orm');
 
 async function main() {
   const db = await new JsonFileDbORM({

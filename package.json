@@ -8,14 +8,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/snmycfs/orm.git"
+    "url": "git+https://github.com/RealJavascriptKid/orm.git"
   },
   "author": "Saad Nisar",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/snmycfs/orm/issues"
+    "url": "https://github.com/RealJavascriptKid/orm/issues"
   },
-  "homepage": "https://github.com/snmycfs/orm#readme",
+  "homepage": "https://github.com/RealJavascriptKid/orm#readme",
   "dependencies": {
     "moment": "^2.29.4"
   }
